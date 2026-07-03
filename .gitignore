@@ -1,0 +1,13 @@
+node_modules/
+dist/
+build/
+coverage/
+.vite/
+
+# sekrety — nigdy w repo (.env.example zostaje)
+.env
+.env.*
+!.env.example
+
+*.log
+.DS_Store

@@ -1,0 +1,11 @@
+node_modules
+dist
+build
+coverage
+.vite
+pnpm-lock.yaml
+
+# dokumentacja prowadzona ręcznie (szerokie tabele) — poza autoformatowaniem
+*.md
+docs
+
