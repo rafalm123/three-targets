@@ -155,7 +155,7 @@ trzy-cele/
 # wymagane: Node 22+ (LTS), pnpm, runtime kontenerów zgodny z OCI dla lokalnego Postgresu przez docker-compose
 # macOS: rekomendowana Colima (MIT/Apache, bezpieczna komercyjnie) — `brew install colima docker`; działają też OrbStack / Docker Desktop
 pnpm install
-cp .env.example .env         # uzupełnić DATABASE_URL, sekrety Better Auth
+cp apps/api/.env.example apps/api/.env   # uzupełnić DATABASE_URL, sekrety Better Auth
 docker compose up -d db      # lokalny Postgres
 pnpm --filter api prisma migrate dev
 pnpm dev                     # api + web (Vite proxy /api → api)

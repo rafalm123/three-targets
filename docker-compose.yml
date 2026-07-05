@@ -1,0 +1,28 @@
+# Lokalny Postgres do developmentu i testów integracyjnych.
+# Dowód portowalności: baza odtwarzalna jedną komendą na dowolnym runtime OCI
+# (Colima / OrbStack / Docker Desktop).
+#
+# Uruchomienie:  docker compose up -d db     (wymaga działającej Colimy: `colima start`)
+# Zatrzymanie:   docker compose down          (dane zostają w wolumenie)
+# Reset danych:  docker compose down -v       (usuwa wolumen)
+services:
+  db:
+    image: postgres:17
+    container_name: trzycele-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: trzycele
+      POSTGRES_PASSWORD: trzycele
+      POSTGRES_DB: trzycele
+    ports:
+      - '5432:5432'
+    volumes:
+      - trzycele-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U trzycele -d trzycele']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  trzycele-db-data:

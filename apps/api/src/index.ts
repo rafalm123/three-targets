@@ -1,5 +1,13 @@
-// @trzy-cele/api — Fastify + zod.
-// Konwencja warstw (obowiązkowa od 1. endpointu): route → handler → service → Prisma.
-// Szkielet serwera + healthcheck powstaje w BE-1; walidacja configu w BE-2.
-// FND-1 dostarcza jedynie strukturę buildowalną.
-export {};
+import { loadEnv } from './config/env';
+import { buildServer } from './server';
+
+// Fail-fast: waliduje konfigurację zanim cokolwiek wystartuje.
+const env = loadEnv();
+
+const app = buildServer();
+
+// host 0.0.0.0 — wymagane w kontenerze (Render/Docker), nie tylko localhost.
+app.listen({ port: env.PORT, host: '0.0.0.0' }).catch((err: unknown) => {
+  app.log.error(err);
+  process.exit(1);
+});
