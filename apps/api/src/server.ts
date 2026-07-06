@@ -1,5 +1,6 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod';
+import { authRoutes } from './routes/auth';
 import { healthRoutes } from './routes/health';
 
 /**
@@ -15,6 +16,7 @@ export function buildServer({ logger = true }: { logger?: boolean } = {}): Fasti
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
 
+  app.register(authRoutes, { prefix: '/api' });
   app.register(healthRoutes, { prefix: '/api' });
 
   return app;
