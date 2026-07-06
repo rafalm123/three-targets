@@ -35,6 +35,8 @@ let cached: Env | undefined;
 export function getEnv(): Env {
   if (cached) return cached;
   try {
+    // Uwaga: loadEnvFile NIE nadpisuje istniejących zmiennych process.env — dzięki temu
+    // w testach vitest `test.env` (dummy) wygrywa z realnym apps/api/.env na maszynie dev.
     process.loadEnvFile();
   } catch {
     // Brak pliku .env — w prod zmienne pochodzą z hosta (Render). To nie jest błąd.

@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { requireAuth } from '../lib/require-auth';
+import { getAuthSession, requireAuth } from '../lib/require-auth';
 
 /**
  * GET /api/me — „kim jestem". Trasa chroniona (BE-5): gość → 401,
@@ -7,6 +7,9 @@ import { requireAuth } from '../lib/require-auth';
  */
 export const meRoutes: FastifyPluginAsync = async (app) => {
   app.get('/me', { preHandler: requireAuth }, async (request) => {
-    return { user: request.authSession?.user };
+    // TODO(BE-6/FE-2): dodać zod response schema jako allowlistę pól (dziś payload jest czysty,
+    // ale przyszłe additionalFields Better Auth wyciekłyby tu automatycznie).
+    const { user } = getAuthSession(request);
+    return { user };
   });
 };

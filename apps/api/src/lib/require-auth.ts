@@ -23,3 +23,14 @@ export async function requireAuth(request: FastifyRequest, reply: FastifyReply):
   }
   request.authSession = session;
 }
+
+/**
+ * Zwraca sesję ustawioną przez `requireAuth`. Rzuca głośno, jeśli trasa nie ma tego
+ * preHandlera — zamiast po cichu zwracać `undefined` (chroni przed zapomnianym guardem).
+ */
+export function getAuthSession(request: FastifyRequest): AuthSession {
+  if (!request.authSession) {
+    throw new Error('getAuthSession() wywołane bez preHandlera requireAuth');
+  }
+  return request.authSession;
+}
