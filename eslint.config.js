@@ -14,4 +14,14 @@ export default tseslint.config(
     files: ['apps/api/**/*.ts', 'packages/**/*.ts', 'apps/web/*.{ts,mts,cts}'],
     languageOptions: { globals: { ...globals.node } },
   },
+  {
+    files: ['**/*.{ts,tsx}'],
+    rules: {
+      // Dopuszcza celowo nieużywane (prefiks _) oraz pomijanie klucza przez rest-destructuring.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', ignoreRestSiblings: true },
+      ],
+    },
+  },
 );
