@@ -29,9 +29,10 @@ packages/shared  współdzielone kontrakty API (zod + typy)
 ## Uruchomienie (development)
 
 ```bash
-pnpm install                     # zależności (raz)
+pnpm install                     # zależności (raz); postinstall generuje klienta Prisma
 docker compose up -d db          # lokalny Postgres na :5432
 cp apps/api/.env.example apps/api/.env   # uzupełnić DATABASE_URL, sekrety
+pnpm --filter @trzy-cele/api db:migrate  # utwórz/zastosuj migracje (lokalny Postgres)
 pnpm dev                         # API (:3000) + frontend (:5173) razem
 ```
 

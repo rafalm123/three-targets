@@ -37,7 +37,7 @@ wieczorem oznaczyć co dowiózł → przeglądać historię poprzednich dni → 
 |---|------|--------------------|
 | BE-1 | Szkielet API + healthcheck | API startuje lokalnie, endpoint zdrowia zwraca OK. W prod dodatkowo serwuje statyczne pliki SPA. |
 | BE-2 | Konfiguracja i sekrety | Aplikacja wczytuje i **waliduje** konfigurację/sekrety na starcie; brak wymaganej zmiennej = czytelny błąd. Wersje krytycznych zależności pinowane. |
-| BE-3 | Schemat użytkownika + migracje | Tabela użytkowników (z `timezone`) tworzona migracją, odtwarzalną od zera. |
+| BE-3 | Schemat auth + użytkownika + migracje | Konfiguracja Better Auth (z polami domenowymi `role`, `timezone`) → wygenerowany schemat Prisma (`user/session/account/verification`) → **jedna migracja odtwarzalna od zera** (`migrate reset` stawia całość). Runtime logowania jeszcze nie działa — to BE-4. |
 | BE-4 | Rejestracja / logowanie / wylogowanie / sesja | User zakłada konto, loguje się i wylogowuje; sesja utrzymana bezpiecznie (Better Auth, wersja pinowana). |
 | BE-5 | „Kim jestem" + ochrona tras | Endpoint zwraca zalogowanego użytkownika; trasy chronione odrzucają gościa (401). |
 | BE-6 | Ciasteczko sesji (same-origin) | Sesja w ciasteczku HttpOnly, `SameSite=Lax` — działa first-party (Safari OK). **Bez CORS** (jeden origin). |
@@ -49,7 +49,7 @@ wieczorem oznaczyć co dowiózł → przeglądać historię poprzednich dni → 
 |---|------|--------------------|
 | FE-1 | Szkielet aplikacji + build | Aplikacja startuje lokalnie (Vite proxy /api), buduje się do statyku serwowanego przez backend, łączy z API (health). |
 | FE-2 | Klient API + obsługa sesji | Warstwa komunikacji z backendem (same-origin — bez cross-site cookies), obsługa 401. |
-| FE-3 | Ekrany rejestracji / logowania / wylogowania | Formularze + obsługa błędów (złe dane, zajęty e-mail itp.). → po BE-4 |
+| FE-3 | Ekrany rejestracji / logowania / wylogowania | Formularze + obsługa błędów (złe dane, zajęty e-mail itp.). Rejestracja **wykrywa i wysyła strefę czasową przeglądarki** (`Intl`) — pole `timezone` jest wymagane (kontrakt w `shared`). → po BE-4 |
 | FE-4 | Trasy chronione + przekierowania | Gość → login; zalogowany → aplikacja. Odświeżenie strony nie wylogowuje. → po BE-5 |
 | FE-5 | Szkielet layoutu + globalne stany | Główny układ (shell) + spójne stany ładowania/błędu do użycia w całej apce. |
 
@@ -82,6 +82,10 @@ wieczorem oznaczyć co dowiózł → przeglądać historię poprzednich dni → 
 | FE-12 | Dopracowanie stanów UI | Ładowanie, pusto, błąd, walidacja — spójne w całej aplikacji. |
 
 ---
+
+## Dług techniczny (zaplanowany)
+- **Upgrade Prisma 6 → 7** — obecnie pin `6.19.3` (Prisma 7 ma otwarte bugi ESM/tsx w naszym stacku: prisma/prisma #28670, #28627). Kryteria wyjścia: (1) oba issue zamknięte, (2) 7.x dojrzała po kilku miesiącach patchy, (3) najwcześniej po zamknięciu Fazy 1. Zakres: nowy generator `prisma-client` + wymagany `output`, import z wygenerowanego folderu, `url/directUrl` → `prisma.config.ts`.
+- **BE-8 / Dockerfile:** generator Prisma 6 pisze klienta do `node_modules` → `prisma generate` musi odpalić się w obrazie **po** instalacji zależności (inaczej brak klienta w runtime).
 
 ## Świadomie POZA zakresem / zaakceptowane ryzyko
 - **Blokady antybotowe / blokada rejestracji / rate limiting** — pominięte świadomie (apka prywatna, mała skala). Reagujemy na bieżąco. *(Do rewizji, gdyby apka była udostępniana szerzej.)*
