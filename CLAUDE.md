@@ -30,7 +30,7 @@ Kontekst nietechniczny i pytania produktowe: **`docs/BUSINESS.md`**.
 | **Backend** | **Node.js + TypeScript + Fastify + zod** (decyzja @sa, 2026-07-03) | zod jest first-class w Fastify → jedno źródło kontraktu z `packages/shared` (Nest wymuszałby duplikację DTO przez `class-validator`, łamiąc „kontrakt raz"). Proporcjonalne do ~12 endpointów, lżejszy cold start na Render free. Guardy roli admina (Faza 3) = cienki `preHandler`, nie powód na Nesta. **Konwencja warstw obowiązkowa od 1. endpointu:** route → handler → service → Prisma. |
 | **Deploy (kluczowa zmiana po recenzji)** | **Jeden kontener** serwujący API (`/api/*`) **oraz statyczne pliki SPA** (`/`) | Same-origin → **znika CORS i problem cross-site cookies (Safari/ITP)**. Prostsze, tańsze (statyk z tego samego kontenera = 0 zł), jeden deploy. |
 | **Baza** | PostgreSQL (Neon — serverless, free, scale-to-zero) | Czysty Postgres = zero lock-inu, `pg_dump` przenosi gdziekolwiek. Neon > Supabase (Supabase pauzuje projekt po tygodniu). |
-| **ORM** | Prisma | Type-safe, dobry DX. |
+| **ORM** | **Prisma — pin `6.19.3`** (decyzja @sa, 2026-07-06) | Type-safe, dobry DX. Prisma 7 świadomie odłożony (otwarte bugi ESM/tsx w naszym stacku tsx+ESM: prisma/prisma #28670, #28627); upgrade 6→7 jako osobny task z kryteriami wyjścia — patrz `docs/backlog_mvp.md`. |
 | **Auth** | **Better Auth** (biblioteka we własnej bazie), **wersja pinowana** | Tożsamość w naszym kodzie/bazie, nie u zewnętrznego SaaS. Biblioteka żywa, ale szybko mutuje (wydania co ~2 mies.) → pin wersji, upgrade jako świadome zadanie. |
 | **Hosting** | **Render (free tier)** | Prawdziwy darmowy plan. (Railway odrzucony — po trialu płatny $5/mies., nie spełnia „~0 zł".) |
 | **CI/CD** | GitHub Actions | Niezależne od chmury. |
@@ -66,7 +66,7 @@ Przeglądarka — React + Vite (SPA)
       ▼
 ┌─────────────────────────────────────────────┐
 │ JEDEN kontener Docker (Render)               │
-│   Backend (NestJS/Fastify) + Better Auth     │
+│   Backend (Fastify) + Better Auth            │
 │     • /api/*  → API                          │
 │     • /       → statyczne pliki zbudowanej SPA│
 └─────────────────────────────────────────────┘
@@ -90,8 +90,10 @@ PostgreSQL (Neon)
 > Cele jako osobna tabela (nie sztywne kolumny) → elastyczność i punktacja per-cel.
 > Punkty jako **append-only ledger** (event sourcing) → brak desynchronizacji licznika.
 
-- **`users`** — `id, email, displayName, role (user|admin), timezone (IANA), createdAt`.
-  *(Tabele sesji/kont zarządza Better Auth.)*
+- **Model użytkownika — współwłasność z Better Auth** (decyzja przed BE-3, 2026-07-06): tabele `user`, `session`, `account`, `verification` **generowane z konfiguracji Better Auth** (`apps/api/src/lib/auth.ts`, wersja pinowana) → schemat Prisma → migracja. Pola domenowe dokładane do modelu `user` jako `additionalFields`:
+  - `role` (`user`|`admin`, default `user`, `input:false`) — konwencja zgodna z pluginem admina Better Auth (pod Fazę 3),
+  - `timezone` (IANA, **wymagane**, `input:true`, ustawiane przy rejestracji) — autorytet dla granicy doby (BE-16).
+  `displayName` realizowane wbudowanym polem `name`. Migracje **wyłącznie przez Prisma Migrate**; upgrade Better Auth = świadome zadanie (przegląd diffu schematu). Wszystkie tabele domenowe (`days`, `point_events`, `lifeline_usage`) kluczują po `id` użytkownika Better Auth (typ tekstowy).
 - **`days`** — `id, userId, date (lokalna data), morningNote, eveningNote, status`. Unikat: `(userId, date)`.
   - **`status` = jawna maszyna stanów:** `morning_pending` → `evening_pending` → `closed`.
     Przełączana akcjami: zapis poranny (`morning_pending`→`evening_pending`), wieczorne odznaczenie (`→closed`).
