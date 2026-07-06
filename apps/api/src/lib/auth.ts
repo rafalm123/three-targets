@@ -2,6 +2,10 @@ import { PrismaClient } from '@prisma/client';
 import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { z } from 'zod';
+import { getEnv } from '../config/env';
+
+// Zwalidowany env (typy zawężone do string) zamiast surowego process.env.
+const env = getEnv();
 
 // Jedyna instancja PrismaClient (konwencja: klient w jednym module, dostęp przez warstwę
 // service). Ułatwia to też przyszły upgrade Prisma 6→7 (zmiana importu w jednym miejscu).
@@ -27,14 +31,12 @@ function isValidTimeZone(tz: string): boolean {
  * displayName realizujemy wbudowanym polem `name`.
  */
 export const auth = betterAuth({
-  // Better Auth czyta te wartości z process.env, ale ustawiamy jawnie dla przejrzystości.
-  // index.ts ładuje .env PRZED importem tego modułu (dynamiczny import serwera po loadEnv).
-  secret: process.env.BETTER_AUTH_SECRET,
-  baseURL: process.env.BETTER_AUTH_URL,
+  secret: env.BETTER_AUTH_SECRET,
+  baseURL: env.BETTER_AUTH_URL,
   // Dev: front (Vite) chodzi na :5173 i proxuje /api na :3000 → inny origin niż baseURL,
   // więc musi być zaufany dla ochrony CSRF. W prod jest same-origin (jeden kontener),
   // więc ten origin dodajemy TYLKO poza produkcją.
-  trustedOrigins: process.env.NODE_ENV === 'production' ? [] : ['http://localhost:5173'],
+  trustedOrigins: env.NODE_ENV === 'production' ? [] : ['http://localhost:5173'],
   database: prismaAdapter(prisma, { provider: 'postgresql' }),
   emailAndPassword: { enabled: true },
   user: {
