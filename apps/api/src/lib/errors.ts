@@ -5,6 +5,9 @@ import { hasZodFastifySchemaValidationErrors } from 'fastify-type-provider-zod';
 /**
  * Spójna obsługa błędów (BE-7): jednolity format `ApiError`, logowanie, brak wycieku
  * stack trace do klienta. Rejestrowane w buildServer.
+ *
+ * `message` jest w EN (fallback deweloperski); FE lokalizuje komunikaty po `code`
+ * (stabilny kontrakt maszynowy).
  */
 export function registerErrorHandling(app: FastifyInstance): void {
   app.setErrorHandler((error: FastifyError, request, reply) => {
@@ -12,7 +15,7 @@ export function registerErrorHandling(app: FastifyInstance): void {
     if (hasZodFastifySchemaValidationErrors(error)) {
       request.log.warn({ err: error }, 'walidacja żądania nie powiodła się');
       const body: ApiError = {
-        error: { message: 'Błąd walidacji żądania', code: 'VALIDATION_ERROR' },
+        error: { message: 'Validation error', code: 'VALIDATION_ERROR' },
       };
       return reply.status(400).send(body);
     }

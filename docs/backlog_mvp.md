@@ -84,6 +84,7 @@ wieczorem oznaczyć co dowiózł → przeglądać historię poprzednich dni → 
 ---
 
 ## Dług techniczny (zaplanowany)
+- **Walidacja: field-level `details` w `ApiError`** (z review BE-7) — dziś 400 zwraca tylko generyczny komunikat. Przy FE-3/FE-7 (formularze) rozważyć dodanie `details` (path+message z `error.validation`, bezpieczne do ekspozycji), by front pokazał, które pole zawiodło.
 - **Upgrade Prisma 6 → 7** — obecnie pin `6.19.3` (Prisma 7 ma otwarte bugi ESM/tsx w naszym stacku: prisma/prisma #28670, #28627). Kryteria wyjścia: (1) oba issue zamknięte, (2) 7.x dojrzała po kilku miesiącach patchy, (3) najwcześniej po zamknięciu Fazy 1. Zakres: nowy generator `prisma-client` + wymagany `output`, import z wygenerowanego folderu, `url/directUrl` → `prisma.config.ts`.
 - **BE-8 / Dockerfile:** generator Prisma 6 pisze klienta do `node_modules` → `prisma generate` musi odpalić się w obrazie **po** instalacji zależności (inaczej brak klienta w runtime).
 
