@@ -25,21 +25,38 @@ export function parseEnv(raw: NodeJS.ProcessEnv): Env {
   return envSchema.parse(raw);
 }
 
+let cached: Env | undefined;
+
 /**
- * Ładuje .env (dev) i waliduje process.env. Przy błędzie: czytelny komunikat
- * i wyjście z kodem 1 — aplikacja NIE startuje z błędną konfiguracją.
+ * Zwalidowany, zcache'owany obiekt env. Ładuje .env (dev) przy pierwszym wywołaniu.
+ * Rzuca ZodError przy błędnej konfiguracji. Używany przez moduły runtime (np. auth.ts) —
+ * daje typy zawężone do `string` zamiast surowego `process.env` (string | undefined).
  */
-export function loadEnv(): Env {
+export function getEnv(): Env {
+  if (cached) return cached;
   try {
+    // Uwaga: loadEnvFile NIE nadpisuje istniejących zmiennych process.env — dzięki temu
+    // w testach vitest `test.env` (dummy) wygrywa z realnym apps/api/.env na maszynie dev.
     process.loadEnvFile();
   } catch {
     // Brak pliku .env — w prod zmienne pochodzą z hosta (Render). To nie jest błąd.
   }
+  cached = parseEnv(process.env);
+  return cached;
+}
 
-  const result = envSchema.safeParse(process.env);
-  if (!result.success) {
-    console.error('❌ Błędna konfiguracja środowiska:\n' + z.prettifyError(result.error));
-    process.exit(1);
+/**
+ * Wariant dla wejścia aplikacji (index.ts): czytelny komunikat + fail-fast (exit 1).
+ * Aplikacja NIE startuje z błędną konfiguracją.
+ */
+export function loadEnv(): Env {
+  try {
+    return getEnv();
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      console.error('❌ Błędna konfiguracja środowiska:\n' + z.prettifyError(err));
+      process.exit(1);
+    }
+    throw err;
   }
-  return result.data;
 }

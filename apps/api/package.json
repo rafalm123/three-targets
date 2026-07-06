@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc --noEmit",
-    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
     "test": "vitest run",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
