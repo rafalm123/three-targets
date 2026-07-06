@@ -32,9 +32,9 @@ export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL: process.env.BETTER_AUTH_URL,
   // Dev: front (Vite) chodzi na :5173 i proxuje /api na :3000 → inny origin niż baseURL,
-  // więc musi być zaufany dla ochrony CSRF. W prod jest same-origin (jeden kontener) —
-  // to wyłącznie potrzeba deweloperska.
-  trustedOrigins: ['http://localhost:5173'],
+  // więc musi być zaufany dla ochrony CSRF. W prod jest same-origin (jeden kontener),
+  // więc ten origin dodajemy TYLKO poza produkcją.
+  trustedOrigins: process.env.NODE_ENV === 'production' ? [] : ['http://localhost:5173'],
   database: prismaAdapter(prisma, { provider: 'postgresql' }),
   emailAndPassword: { enabled: true },
   user: {

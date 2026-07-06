@@ -15,6 +15,7 @@ export default tseslint.config(
     languageOptions: { globals: { ...globals.node } },
   },
   {
+    files: ['**/*.{ts,tsx}'],
     rules: {
       // Dopuszcza celowo nieużywane (prefiks _) oraz pomijanie klucza przez rest-destructuring.
       '@typescript-eslint/no-unused-vars': [

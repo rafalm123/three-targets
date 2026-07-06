@@ -12,7 +12,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     method: ['GET', 'POST'],
     url: '/auth/*',
     async handler(request, reply) {
-      const url = new URL(request.url, `http://${request.headers.host}`);
+      const url = new URL(request.url, `http://${request.headers.host ?? 'localhost'}`);
       const req = new Request(url.toString(), {
         method: request.method,
         headers: fromNodeHeaders(request.headers),

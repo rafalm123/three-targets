@@ -37,6 +37,11 @@ describe('parseEnv', () => {
     expect(() => parseEnv(rest)).toThrow();
   });
 
+  it('wymaga BETTER_AUTH_URL', () => {
+    const { BETTER_AUTH_URL: _omit, ...rest } = base;
+    expect(() => parseEnv(rest)).toThrow();
+  });
+
   it('odrzuca niepoprawny DATABASE_URL', () => {
     expect(() => parseEnv({ ...base, DATABASE_URL: 'nie-jest-urlem' })).toThrow();
   });
