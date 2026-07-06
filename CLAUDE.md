@@ -62,7 +62,7 @@ używanego rano i wieczorem oznacza to, że **niemal każde wejście trafia w zi
 
 ```
 Przeglądarka — React + Vite (SPA)
-      │  HTTPS/JSON · SAME-ORIGIN · ciasteczko sesji (HttpOnly, SameSite=Lax)
+      │  HTTPS/JSON · SAME-ORIGIN · ciasteczko sesji (HttpOnly, SameSite=Lax, Secure w prod)
       ▼
 ┌─────────────────────────────────────────────┐
 │ JEDEN kontener Docker (Render)               │

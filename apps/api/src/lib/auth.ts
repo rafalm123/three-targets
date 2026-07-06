@@ -39,6 +39,12 @@ export const auth = betterAuth({
   trustedOrigins: env.NODE_ENV === 'production' ? [] : ['http://localhost:5173'],
   database: prismaAdapter(prisma, { provider: 'postgresql' }),
   emailAndPassword: { enabled: true },
+  // Ciasteczko sesji (BE-6): Better Auth domyślnie ustawia HttpOnly + SameSite=Lax (zweryfikowane
+  // na żywo). Secure włączamy JAWNIE w produkcji (HTTPS na Render), zamiast polegać na detekcji
+  // ze schematu baseURL. Same-origin (jeden kontener) → ciasteczko first-party, bez CORS.
+  advanced: {
+    useSecureCookies: env.NODE_ENV === 'production',
+  },
   user: {
     additionalFields: {
       role: { type: ['user', 'admin'], defaultValue: 'user', input: false },
