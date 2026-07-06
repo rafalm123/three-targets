@@ -38,7 +38,7 @@ wieczorem oznaczyć co dowiózł → przeglądać historię poprzednich dni → 
 | BE-1 | Szkielet API + healthcheck | API startuje lokalnie, endpoint zdrowia zwraca OK. W prod dodatkowo serwuje statyczne pliki SPA. |
 | BE-2 | Konfiguracja i sekrety | Aplikacja wczytuje i **waliduje** konfigurację/sekrety na starcie; brak wymaganej zmiennej = czytelny błąd. Wersje krytycznych zależności pinowane. |
 | BE-3 | Schemat auth + użytkownika + migracje | Konfiguracja Better Auth (z polami domenowymi `role`, `timezone`) → wygenerowany schemat Prisma (`user/session/account/verification`) → **jedna migracja odtwarzalna od zera** (`migrate reset` stawia całość). Runtime logowania jeszcze nie działa — to BE-4. |
-| BE-4 | Rejestracja / logowanie / wylogowanie / sesja | User zakłada konto, loguje się i wylogowuje; sesja utrzymana bezpiecznie (Better Auth, wersja pinowana). |
+| BE-4 | Rejestracja / logowanie / wylogowanie / sesja | User zakłada konto, loguje się i wylogowuje; sesja utrzymana bezpiecznie (Better Auth, wersja pinowana). **Walidacja `timezone` na wejściu rejestracji** — poprawny identyfikator IANA (`validator.input` w Better Auth / zod refine przez `Intl`); przeniesione z BE-3 (code review). |
 | BE-5 | „Kim jestem" + ochrona tras | Endpoint zwraca zalogowanego użytkownika; trasy chronione odrzucają gościa (401). |
 | BE-6 | Ciasteczko sesji (same-origin) | Sesja w ciasteczku HttpOnly, `SameSite=Lax` — działa first-party (Safari OK). **Bez CORS** (jeden origin). |
 | BE-7 | Obsługa błędów + logi | Spójny format odpowiedzi błędów; podstawowe logowanie zdarzeń/żądań. |

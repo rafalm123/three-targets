@@ -3,14 +3,15 @@ import { z } from 'zod';
 /**
  * Kontrakt zmiennych środowiskowych. Walidowany na starcie (fail-fast).
  *
- * DATABASE_URL i sekrety Better Auth są na razie opcjonalne — staną się wymagane
- * przy BE-3 (Prisma) i BE-4 (Better Auth), gdy realnie z nich korzystamy. Dzięki temu
- * walking skeleton startuje bez pełnego .env.
+ * DATABASE_URL jest wymagane od BE-3 (Prisma to zależność projektu). Sekrety Better Auth
+ * pozostają opcjonalne do BE-4 (wtedy podpinamy runtime auth).
+ * DIRECT_URL (Neon: direct pod migracje) używa WYŁĄCZNIE Prisma CLI przez schema.prisma —
+ * runtime aplikacji go nie dotyka, więc świadomie nie ma go w tym schemacie.
  */
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
-  DATABASE_URL: z.url().optional(),
+  DATABASE_URL: z.url(),
   BETTER_AUTH_SECRET: z.string().min(1).optional(),
   BETTER_AUTH_URL: z.url().optional(),
 });
