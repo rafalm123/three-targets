@@ -1,3 +1,4 @@
+import type { ApiError } from '@trzy-cele/shared';
 import { fromNodeHeaders } from 'better-auth/node';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { auth } from './auth';
@@ -18,7 +19,8 @@ declare module 'fastify' {
 export async function requireAuth(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const session = await auth.api.getSession({ headers: fromNodeHeaders(request.headers) });
   if (!session) {
-    await reply.status(401).send({ error: 'Unauthorized' });
+    const body: ApiError = { error: { message: 'Unauthorized', code: 'UNAUTHORIZED' } };
+    await reply.status(401).send(body);
     return;
   }
   request.authSession = session;
