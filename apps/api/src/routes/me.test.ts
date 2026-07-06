@@ -8,7 +8,9 @@ describe('GET /api/me (ochrona tras)', () => {
     try {
       const res = await app.inject({ method: 'GET', url: '/api/me' });
       expect(res.statusCode).toBe(401);
-      expect(res.json()).toMatchObject({ error: 'Unauthorized' });
+      expect(res.json()).toMatchObject({
+        error: { message: 'Unauthorized', code: 'UNAUTHORIZED' },
+      });
     } finally {
       await app.close();
     }
