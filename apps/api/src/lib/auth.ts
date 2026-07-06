@@ -41,7 +41,8 @@ export const auth = betterAuth({
   emailAndPassword: { enabled: true },
   // Ciasteczko sesji (BE-6): Better Auth domyślnie ustawia HttpOnly + SameSite=Lax (zweryfikowane
   // na żywo). Secure włączamy JAWNIE w produkcji (HTTPS na Render), zamiast polegać na detekcji
-  // ze schematu baseURL. Same-origin (jeden kontener) → ciasteczko first-party, bez CORS.
+  // ze schematu baseURL. UWAGA przy debugowaniu prod: nazwa ciasteczka zyskuje wtedy prefiks
+  // `__Secure-` (`__Secure-better-auth.session_token`). Same-origin (jeden kontener) → first-party, bez CORS.
   advanced: {
     useSecureCookies: env.NODE_ENV === 'production',
   },
