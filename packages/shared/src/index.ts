@@ -5,5 +5,6 @@
 // miejscu propaguje się do frontendu i backendu — to realizacja end-to-end type safety.
 //
 // Kolejne kontrakty (auth, dzień, cele) dochodzą przy swoich taskach (BE-4, BE-9/10…).
+export * from './auth';
 export * from './error';
 export * from './health';
