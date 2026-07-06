@@ -1,3 +1,5 @@
+import { MIN_PASSWORD_LENGTH } from '@trzy-cele/shared';
+
 /**
  * Mapowanie błędów Better Auth (FE-2/FE-3) na czytelne komunikaty PL.
  *
@@ -18,7 +20,7 @@ const CODE_MESSAGES: Record<string, string> = {
   INVALID_EMAIL_OR_PASSWORD: 'Niepoprawny e-mail lub hasło.',
   USER_ALREADY_EXISTS: 'Konto z tym adresem e-mail już istnieje.',
   EMAIL_CAN_NOT_BE_UPDATED: 'Nie można zmienić tego adresu e-mail.',
-  PASSWORD_TOO_SHORT: 'Hasło jest za krótkie (min. 8 znaków).',
+  PASSWORD_TOO_SHORT: `Hasło jest za krótkie (min. ${MIN_PASSWORD_LENGTH} znaków).`,
   PASSWORD_TOO_LONG: 'Hasło jest za długie.',
   INVALID_EMAIL: 'Niepoprawny adres e-mail.',
 };

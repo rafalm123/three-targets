@@ -14,9 +14,15 @@ import { z } from 'zod';
 export const userRoleSchema = z.enum(['user', 'admin']);
 export type UserRole = z.infer<typeof userRoleSchema>;
 
+/** Minimalna długość hasła — SSOT (Better Auth domyślnie też wymaga 8). */
+export const MIN_PASSWORD_LENGTH = 8;
+
 /**
- * Poprawny identyfikator strefy IANA? `Intl` rzuca `RangeError` dla nieznanej strefy.
- * Ten sam predykat, którym backend waliduje `timezone` na wejściu rejestracji.
+ * Strefa akceptowana przez `Intl` (rzuca `RangeError` dla nieznanej). To DOKŁADNIE ten sam
+ * predykat, którym backend waliduje `timezone` na wejściu rejestracji (`apps/api/src/lib/auth.ts`)
+ * — celowo trzymamy je zgodne, żeby FE i BE nie rozjechały się w tym, co uznają za poprawne.
+ * Uwaga: `Intl` przyjmuje też stałe offsetowe (np. `+05:00`) obok nazw IANA; akceptujemy to
+ * świadomie — offset jest równie dobrym autorytetem dla granicy doby, a BE przyjmie identycznie.
  */
 export function isValidTimeZone(timeZone: string): boolean {
   try {
@@ -48,14 +54,17 @@ export const emailSchema = z
   .string()
   .trim()
   .min(1, 'E-mail jest wymagany')
-  .email('Niepoprawny adres e-mail')
-  .toLowerCase();
+  .pipe(z.email('Niepoprawny adres e-mail'))
+  .transform((value) => value.toLowerCase());
 
 /**
- * Hasło. Minimum 8 znaków (domyślny wymóg Better Auth to 8). Nie duplikujemy tu polityki
- * backendu ponad to — walidacja wejściowa ma dać czytelny komunikat, autorytetem pozostaje BE.
+ * Hasło. Minimum {@link MIN_PASSWORD_LENGTH} znaków (domyślny wymóg Better Auth to 8). Nie
+ * duplikujemy tu polityki backendu ponad to — walidacja wejściowa ma dać czytelny komunikat,
+ * autorytetem pozostaje BE.
  */
-export const passwordSchema = z.string().min(8, 'Hasło musi mieć min. 8 znaków');
+export const passwordSchema = z
+  .string()
+  .min(MIN_PASSWORD_LENGTH, `Hasło musi mieć min. ${MIN_PASSWORD_LENGTH} znaków`);
 
 /** Wyświetlana nazwa (`name` w Better Auth = displayName). */
 export const displayNameSchema = z.string().trim().min(1, 'Nazwa jest wymagana');
