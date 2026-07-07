@@ -15,3 +15,6 @@ coverage/
 # IDE / edytory
 .idea/
 .vscode/
+
+# harness / worktree agentów
+.claude/

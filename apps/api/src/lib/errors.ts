@@ -35,8 +35,5 @@ export function registerErrorHandling(app: FastifyInstance): void {
     return reply.status(status).send(body);
   });
 
-  app.setNotFoundHandler((_request, reply) => {
-    const body: ApiError = { error: { message: 'Not Found', code: 'NOT_FOUND' } };
-    return reply.status(404).send(body);
-  });
+  // notFoundHandler jest ustawiany w registerSpa (jest SPA-aware: w prod trasy nie-API → index.html).
 }

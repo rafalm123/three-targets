@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+dist
+**/dist
+coverage
+.vite
+.git
+.claude
+.github
+*.log
+.DS_Store
+.env
+**/.env
+!**/.env.example
