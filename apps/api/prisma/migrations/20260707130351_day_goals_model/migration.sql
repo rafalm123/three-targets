@@ -1,8 +1,8 @@
 -- CreateEnum
-CREATE TYPE "DayStatus" AS ENUM ('morning_pending', 'evening_pending', 'closed');
+CREATE TYPE "day_status" AS ENUM ('morning_pending', 'evening_pending', 'closed');
 
 -- CreateEnum
-CREATE TYPE "GoalKind" AS ENUM ('main', 'secondary');
+CREATE TYPE "goal_kind" AS ENUM ('main', 'secondary');
 
 -- CreateTable
 CREATE TABLE "day" (
@@ -11,7 +11,7 @@ CREATE TABLE "day" (
     "date" DATE NOT NULL,
     "morningNote" TEXT,
     "eveningNote" TEXT,
-    "status" "DayStatus" NOT NULL DEFAULT 'morning_pending',
+    "status" "day_status" NOT NULL DEFAULT 'morning_pending',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -22,7 +22,7 @@ CREATE TABLE "day" (
 CREATE TABLE "goal" (
     "id" TEXT NOT NULL,
     "dayId" TEXT NOT NULL,
-    "kind" "GoalKind" NOT NULL,
+    "kind" "goal_kind" NOT NULL,
     "position" INTEGER NOT NULL,
     "title" TEXT NOT NULL,
     "note" TEXT,
@@ -33,9 +33,6 @@ CREATE TABLE "goal" (
 
     CONSTRAINT "goal_pkey" PRIMARY KEY ("id")
 );
-
--- CreateIndex
-CREATE INDEX "day_userId_idx" ON "day"("userId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "day_userId_date_key" ON "day"("userId", "date");

@@ -86,11 +86,15 @@ enum DayStatus {
   morning_pending
   evening_pending
   closed
+
+  @@map("day_status")
 }
 
 enum GoalKind {
   main
   secondary
+
+  @@map("goal_kind")
 }
 
 /// Jeden dzień użytkownika na daną datę (1 cel główny + 2 poboczne).
@@ -108,7 +112,6 @@ model Day {
   updatedAt   DateTime  @updatedAt
 
   @@unique([userId, date])
-  @@index([userId])
   @@map("day")
 }
 
