@@ -23,8 +23,9 @@ export function registerSpa(app: FastifyInstance): void {
 
   app.setNotFoundHandler((request, reply) => {
     const url = request.raw.url ?? '';
+    const isApi = url === '/api' || url.startsWith('/api/');
     // Prod: trasy nie-API to routing kliencki SPA → oddaj index.html.
-    if (isProd && !url.startsWith('/api')) {
+    if (isProd && !isApi) {
       return reply.sendFile('index.html');
     }
     const body: ApiError = { error: { message: 'Not Found', code: 'NOT_FOUND' } };
