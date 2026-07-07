@@ -53,8 +53,10 @@ export function PublicOnlyRoute(): ReactNode {
 
   if (isPending) return <LoadingState label="Sprawdzanie sesji…" />;
   if (session) {
+    // history.state to granica zaufania — walidujemy runtime, że `from` jest stringiem,
+    // zamiast ślepo rzutować i przekazać cokolwiek do Navigate.
     const state = location.state as FromLocationState | null;
-    const target = state?.from ?? DEFAULT_AUTHED_PATH;
+    const target = typeof state?.from === 'string' ? state.from : DEFAULT_AUTHED_PATH;
     return <Navigate to={target} replace />;
   }
 
