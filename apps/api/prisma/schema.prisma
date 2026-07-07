@@ -1,5 +1,7 @@
 // Schemat bazy. Modele auth (user/session/account/verification) generuje Better Auth CLI
 // z konfiguracji apps/api/src/lib/auth.ts. Migracje wyłącznie przez Prisma Migrate.
+// Modele domenowe (Day, Goal) oraz relacja `User.days` są dopisane RĘCZNIE — przy ew.
+// ponownym `better-auth/cli generate` trzeba je zachować (BA regeneruje tylko modele auth).
 
 generator client {
   provider = "prisma-client-js"
@@ -23,6 +25,7 @@ model User {
   timezone      String
   sessions      Session[]
   accounts      Account[]
+  days          Day[]
 
   @@unique([email])
   @@map("user")
@@ -74,4 +77,58 @@ model Verification {
 
   @@index([identifier])
   @@map("verification")
+}
+
+// --- Modele domenowe (dziennik) ---
+
+// Maszyna stanów dnia: morning_pending → evening_pending → closed.
+enum DayStatus {
+  morning_pending
+  evening_pending
+  closed
+
+  @@map("day_status")
+}
+
+enum GoalKind {
+  main
+  secondary
+
+  @@map("goal_kind")
+}
+
+/// Jeden dzień użytkownika na daną datę (1 cel główny + 2 poboczne).
+/// `date` to LOKALNA data użytkownika (bez czasu) — „dzisiaj" wyznacza serwer z users.timezone (BE-16).
+model Day {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date        DateTime  @db.Date
+  morningNote String?
+  eveningNote String?
+  status      DayStatus @default(morning_pending)
+  goals       Goal[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([userId, date])
+  @@map("day")
+}
+
+/// Cel w ramach dnia. `completed = null` dopóki nie oznaczony wieczorem.
+model Goal {
+  id            String   @id @default(cuid())
+  dayId         String
+  day           Day      @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  kind          GoalKind
+  position      Int
+  title         String
+  note          String?
+  completed     Boolean?
+  completedNote String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([dayId])
+  @@map("goal")
 }

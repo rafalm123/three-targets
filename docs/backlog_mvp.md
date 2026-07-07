@@ -62,13 +62,13 @@ wieczorem oznaczyć co dowiózł → przeglądać historię poprzednich dni → 
 | # | Task | Definition of Done |
 |---|------|--------------------|
 | BE-9 | Model dnia i celów | Jeden dzień na użytkownika na datę (1 główny + 2 poboczne). `days.status` jako jawna maszyna stanów: `morning_pending` → `evening_pending` → `closed`. |
-| BE-10 | Zapis porannego wpisu | Endpoint tworzy dzień: 1 główny + 2 poboczne + opcjonalne notatki. Walidacja: dokładnie 1 główny i 2 poboczne; jeden wpis na dzień. |
+| BE-10 | Zapis porannego wpisu | Endpoint tworzy dzień: 1 główny + 2 poboczne + opcjonalne notatki. Walidacja: dokładnie 1 główny i 2 poboczne; jeden wpis na dzień. **(z review BE-9):** dodać unikat DB `(dayId, kind, position)` (guard przed double-submit) — zastąpi redundantny `@@index([dayId])` na `goal`. |
 | BE-11 | Edycja porannego wpisu | Poprawa wpisu w ciągu tego samego dnia (stan `evening_pending`, przed zamknięciem). |
 | BE-12 | Wieczorne odznaczenie | Endpoint oznacza każdy cel: dowieziony / nie + opcjonalna notatka; przełącza dzień na `closed`. |
 | BE-13 | Pobranie dnia | Zwraca dzień (dzisiejszy lub po dacie) z celami i stanem. |
 | BE-14 | Historia dni | Lista przeszłych dni od najnowszych, ze stronicowaniem. |
 | BE-15 | Licznik dni | Zwraca licznik/serię dni (definicję „dnia liczonego" potwierdzić z biznesem). |
-| BE-16 | Reguła doby | „Dzień" = lokalna data użytkownika; **„dzisiaj" wyznacza serwer** z `users.timezone`. Unikat `(userId, date)` chroni przed duplikatem. |
+| BE-16 | Reguła doby | „Dzień" = lokalna data użytkownika; **„dzisiaj" wyznacza serwer** z `users.timezone`. Unikat `(userId, date)` chroni przed duplikatem. **⚠️ footgun `@db.Date`/Prisma (z review BE-9):** datę konstruować jako `new Date('YYYY-MM-DD')` (UTC midnight) z daty lokalnej wyliczonej z `users.timezone` — NIGDY z surowego `new Date()` (przesunie dzień). |
 
 ## 🟩 Frontend
 | # | Task | Definition of Done |
