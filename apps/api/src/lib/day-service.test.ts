@@ -32,6 +32,14 @@ describe('checkCanCloseDay', () => {
     });
   });
 
+  it('duplikaty id (np. [a,a,b]) → 400 (dedup zbioru daje rozmiar ≠ 3)', () => {
+    expect(checkCanCloseDay({ status: 'evening_pending', goals }, ['a', 'a', 'b'])).toMatchObject({
+      ok: false,
+      status: 400,
+      code: 'GOAL_MISMATCH',
+    });
+  });
+
   it('evening_pending + dokładnie te cele (dowolna kolejność) → ok', () => {
     expect(checkCanCloseDay({ status: 'evening_pending', goals }, ['c', 'a', 'b'])).toEqual({ ok: true });
   });

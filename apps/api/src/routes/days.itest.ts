@@ -223,4 +223,21 @@ describe('POST /api/days/today/evening (integracja API ↔ DB)', () => {
     expect(res.statusCode).toBe(400);
     expect(res.json().error.code).toBe('GOAL_MISMATCH');
   });
+
+  it('cross-user: id celów innego usera → 400, własny dzień zostaje otwarty', async () => {
+    const cookieA = await signUp();
+    const dayA = await createMorning(cookieA);
+    const cookieB = await signUp();
+    await createMorning(cookieB); // B ma własny dzień (evening_pending) — więc nie 404, tylko 400
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/days/today/evening',
+      headers: { cookie: cookieB, 'content-type': 'application/json' },
+      payload: { goals: dayA.goals.map((g) => ({ id: g.id, completed: true })) },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('GOAL_MISMATCH');
+    const check = await app.inject({ method: 'GET', url: '/api/days/today', headers: { cookie: cookieB } });
+    expect(check.json().day.status).toBe('evening_pending');
+  });
 });

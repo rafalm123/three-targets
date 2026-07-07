@@ -4,9 +4,11 @@
  * tu walidujemy stan i spójność oznaczanych celów.
  */
 
+export type CloseGuardCode = 'NO_DAY_TODAY' | 'DAY_ALREADY_CLOSED' | 'GOAL_MISMATCH';
+
 export type CloseGuardResult =
   | { ok: true }
-  | { ok: false; status: 404 | 409 | 400; code: string; message: string };
+  | { ok: false; status: 404 | 409 | 400; code: CloseGuardCode; message: string };
 
 /**
  * Czy dzień można zamknąć wieczornym odznaczeniem `markGoalIds`?
