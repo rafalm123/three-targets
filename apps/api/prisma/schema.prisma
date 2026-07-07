@@ -81,9 +81,9 @@ model Verification {
 
 // --- Modele domenowe (dziennik) ---
 
-// Maszyna stanów dnia: morning_pending → evening_pending → closed.
+// Maszyna stanów dnia: evening_pending → closed. „Przed wpisem porannym" = brak rekordu dnia
+// (stan wirtualny), więc dzień rodzi się od razu w evening_pending. (decyzja @sa)
 enum DayStatus {
-  morning_pending
   evening_pending
   closed
 
@@ -106,7 +106,7 @@ model Day {
   date        DateTime  @db.Date
   morningNote String?
   eveningNote String?
-  status      DayStatus @default(morning_pending)
+  status      DayStatus @default(evening_pending)
   goals       Goal[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

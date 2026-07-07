@@ -16,7 +16,7 @@ export const morningEntrySchema = z.object({
 export type MorningEntry = z.infer<typeof morningEntrySchema>;
 
 export const goalKindSchema = z.enum(['main', 'secondary']);
-export const dayStatusSchema = z.enum(['morning_pending', 'evening_pending', 'closed']);
+export const dayStatusSchema = z.enum(['evening_pending', 'closed']);
 
 /** Cel w odpowiedzi (stan dnia). `completed = null` dopóki nieoznaczony wieczorem. */
 export const goalSchema = z.object({
@@ -33,7 +33,7 @@ export type Goal = z.infer<typeof goalSchema>;
 /** Dzień z celami (odpowiedź API). `date` jako `YYYY-MM-DD`. */
 export const daySchema = z.object({
   id: z.string(),
-  date: z.string(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   status: dayStatusSchema,
   morningNote: z.string().nullable(),
   eveningNote: z.string().nullable(),

@@ -69,7 +69,12 @@ export const dayRoutes: FastifyPluginAsyncZod = async (app) => {
         });
         return await reply.status(201).send(toDayResponse(day));
       } catch (err) {
-        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        // 409 tylko dla konfliktu unikatu dnia (userId, date); inne P2002 → rzuć dalej (→ 500).
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === 'P2002' &&
+          String(err.meta?.target ?? '').includes('date')
+        ) {
           const conflict: ApiError = {
             error: { message: 'Wpis na dziś już istnieje', code: 'DAY_ALREADY_EXISTS' },
           };
