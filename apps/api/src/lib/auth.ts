@@ -1,15 +1,11 @@
-import { PrismaClient } from '@prisma/client';
 import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { z } from 'zod';
 import { getEnv } from '../config/env';
+import { prisma } from './prisma';
 
 // Zwalidowany env (typy zawężone do string) zamiast surowego process.env.
 const env = getEnv();
-
-// Jedyna instancja PrismaClient (konwencja: klient w jednym module, dostęp przez warstwę
-// service). Ułatwia to też przyszły upgrade Prisma 6→7 (zmiana importu w jednym miejscu).
-const prisma = new PrismaClient();
 
 // Poprawny identyfikator strefy IANA? Intl rzuca RangeError dla nieznanej strefy.
 function isValidTimeZone(tz: string): boolean {

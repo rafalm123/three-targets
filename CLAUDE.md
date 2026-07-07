@@ -95,9 +95,10 @@ PostgreSQL (Neon)
   - `timezone` (IANA, **wymagane**, `input:true`, ustawiane przy rejestracji) — autorytet dla granicy doby (BE-16).
   `displayName` realizowane wbudowanym polem `name`. Migracje **wyłącznie przez Prisma Migrate**; upgrade Better Auth = świadome zadanie (przegląd diffu schematu). Wszystkie tabele domenowe (`days`, `point_events`, `lifeline_usage`) kluczują po `id` użytkownika Better Auth (typ tekstowy).
 - **`days`** — `id, userId, date (lokalna data), morningNote, eveningNote, status`. Unikat: `(userId, date)`.
-  - **`status` = jawna maszyna stanów:** `morning_pending` → `evening_pending` → `closed`.
-    Przełączana akcjami: zapis poranny (`morning_pending`→`evening_pending`), wieczorne odznaczenie (`→closed`).
-    (Nie jest to „licznik", więc trzymamy jawnie, ale reguły przejść są zdefiniowane w jednym miejscu.)
+  - **`status` = maszyna stanów:** `evening_pending` → `closed` (decyzja @sa). „Przed wpisem porannym" =
+    **brak rekordu dnia** (stan wirtualny) → dzień rodzi się od razu w `evening_pending` (tworzy go wpis poranny).
+    Wieczorne odznaczenie → `closed`. `closed` jest **niemutowalny**; mutacje dnia (edycja/odznaczenie) tylko dla „dziś".
+    Reguły przejść zdefiniowane w jednym serwisie doby.
 - **`goals`** — `id, dayId, kind (main|secondary), position, title, note, completed (bool|null), completedNote`.
 - **`point_events`** *(poza MVP)* — append-only ledger: `id, userId, dayId, delta, reason, createdBy, createdAt`.
   - **`delta` jako INTEGER w „półpunktach"** (poboczny wykonany = `+1`, kara za główny = `−2`) **lub `NUMERIC`** — **nigdy float** (sumowanie floatów w saldzie = błędy zaokrągleń). Prezentacja dzieli przez 2.
@@ -105,6 +106,9 @@ PostgreSQL (Neon)
 - **`lifeline_usage`** *(poza MVP)* — `id, userId, yearMonth, dayId` — limit 1 koło/miesiąc.
 
 **Streak / licznik dni** liczymy z `days` (nie trzymamy w osobnym polu → brak rozjazdu).
+**Definicja serii (decyzja @sa):** maksymalny ciąg kolejnych dni kalendarzowych ze statusem `closed`, licząc wstecz
+od „dziś" (serwer, z `users.timezone`); dzień w toku (≠`closed`) nie zrywa serii. Mierzy *rytuał*, nie wynik —
+skuteczność zmierzą punkty (Faza 2). `GET /api/stats/streak` → `current / longest / totalDays / asOfDate`.
 
 ---
 
