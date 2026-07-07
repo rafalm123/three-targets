@@ -129,6 +129,6 @@ model Goal {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  @@index([dayId])
+  @@unique([dayId, kind, position])
   @@map("goal")
 }
