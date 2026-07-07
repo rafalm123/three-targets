@@ -41,5 +41,48 @@ jobs:
       - name: Build
         run: pnpm build
 
-# Testy integracyjne API↔DB (gdy powstaną): dodać Postgres jako `services:` container
-# w tym jobie — zgodnie z FND-5 / decyzją @sa (ten sam obraz co lokalny docker-compose).
+  integration:
+    name: integration (API ↔ DB)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: trzycele
+          POSTGRES_PASSWORD: trzycele
+          POSTGRES_DB: trzycele
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U trzycele -d trzycele"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://trzycele:trzycele@localhost:5432/trzycele
+      DIRECT_URL: postgresql://trzycele:trzycele@localhost:5432/trzycele
+      BETTER_AUTH_SECRET: ci-integration-secret-0123456789abcdef
+      BETTER_AUTH_URL: http://localhost:3000
+      NODE_ENV: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        run: pnpm --filter @trzy-cele/api exec prisma generate
+
+      - name: Apply migrations
+        run: pnpm --filter @trzy-cele/api exec prisma migrate deploy
+
+      - name: Integration tests (API ↔ DB)
+        run: pnpm --filter @trzy-cele/api test:integration
