@@ -1,8 +1,9 @@
 import { registerInputSchema, resolveBrowserTimeZone } from '@trzy-cele/shared';
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { AppShell } from '../components/app-shell';
 import { authClient } from '../lib/auth-client';
-import { authErrorMessage } from '../lib/auth-errors';
+import { authErrorMessage, GENERIC_AUTH_ERROR } from '../lib/auth-errors';
 
 type FieldErrors = { name?: string; email?: string; password?: string; timezone?: string };
 
@@ -39,80 +40,103 @@ export function RegisterPage(): ReactNode {
     setFieldErrors({});
     setSubmitting(true);
 
-    const { error } = await authClient.signUp.email({
-      name: parsed.data.name,
-      email: parsed.data.email,
-      password: parsed.data.password,
-      timezone: parsed.data.timezone,
-    });
-
-    setSubmitting(false);
-    if (error) setFormError(authErrorMessage(error));
+    // signUp.email zwraca { error } dla odpowiedzi HTTP, ale RZUCA przy awarii sieci
+    // (better-fetch nie łapie wyjątku fetch) → try/catch, by nie zawiesić formularza.
+    try {
+      const { error } = await authClient.signUp.email({
+        name: parsed.data.name,
+        email: parsed.data.email,
+        password: parsed.data.password,
+        timezone: parsed.data.timezone,
+      });
+      if (error) setFormError(authErrorMessage(error));
+    } catch {
+      setFormError(GENERIC_AUTH_ERROR);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
-    <form className="form" onSubmit={handleSubmit} noValidate>
-      <h2>Rejestracja</h2>
+    <AppShell>
+      <form className="form" onSubmit={handleSubmit} noValidate>
+        <h2>Rejestracja</h2>
 
-      {formError ? (
-        <div className="form-error" role="alert">
-          {formError}
+        {formError ? (
+          <div className="form-error" role="alert">
+            {formError}
+          </div>
+        ) : null}
+
+        {/* Strefa czasowa nie ma poprawnej wartości z przeglądarki — rzadki edge case. */}
+        {fieldErrors.timezone ? (
+          <div className="form-error" role="alert">
+            {fieldErrors.timezone}
+          </div>
+        ) : null}
+
+        <div className="field">
+          <label htmlFor="register-name">Nazwa</label>
+          <input
+            id="register-name"
+            type="text"
+            autoComplete="name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            aria-invalid={fieldErrors.name ? true : undefined}
+            aria-describedby={fieldErrors.name ? 'register-name-error' : undefined}
+          />
+          {fieldErrors.name ? (
+            <span id="register-name-error" className="field-error">
+              {fieldErrors.name}
+            </span>
+          ) : null}
         </div>
-      ) : null}
 
-      {/* Strefa czasowa nie ma poprawnej wartości z przeglądarki — rzadki edge case. */}
-      {fieldErrors.timezone ? (
-        <div className="form-error" role="alert">
-          {fieldErrors.timezone}
+        <div className="field">
+          <label htmlFor="register-email">E-mail</label>
+          <input
+            id="register-email"
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            aria-invalid={fieldErrors.email ? true : undefined}
+            aria-describedby={fieldErrors.email ? 'register-email-error' : undefined}
+          />
+          {fieldErrors.email ? (
+            <span id="register-email-error" className="field-error">
+              {fieldErrors.email}
+            </span>
+          ) : null}
         </div>
-      ) : null}
 
-      <div className="field">
-        <label htmlFor="register-name">Nazwa</label>
-        <input
-          id="register-name"
-          type="text"
-          autoComplete="name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          aria-invalid={fieldErrors.name ? true : undefined}
-        />
-        {fieldErrors.name ? <span className="field-error">{fieldErrors.name}</span> : null}
-      </div>
+        <div className="field">
+          <label htmlFor="register-password">Hasło</label>
+          <input
+            id="register-password"
+            type="password"
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            aria-invalid={fieldErrors.password ? true : undefined}
+            aria-describedby={fieldErrors.password ? 'register-password-error' : undefined}
+          />
+          {fieldErrors.password ? (
+            <span id="register-password-error" className="field-error">
+              {fieldErrors.password}
+            </span>
+          ) : null}
+        </div>
 
-      <div className="field">
-        <label htmlFor="register-email">E-mail</label>
-        <input
-          id="register-email"
-          type="email"
-          autoComplete="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          aria-invalid={fieldErrors.email ? true : undefined}
-        />
-        {fieldErrors.email ? <span className="field-error">{fieldErrors.email}</span> : null}
-      </div>
+        <button type="submit" className="button" disabled={submitting}>
+          {submitting ? 'Zakładanie konta…' : 'Załóż konto'}
+        </button>
 
-      <div className="field">
-        <label htmlFor="register-password">Hasło</label>
-        <input
-          id="register-password"
-          type="password"
-          autoComplete="new-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          aria-invalid={fieldErrors.password ? true : undefined}
-        />
-        {fieldErrors.password ? <span className="field-error">{fieldErrors.password}</span> : null}
-      </div>
-
-      <button type="submit" className="button" disabled={submitting}>
-        {submitting ? 'Zakładanie konta…' : 'Załóż konto'}
-      </button>
-
-      <p className="form-footer">
-        Masz już konto? <Link to="/login">Zaloguj się</Link>
-      </p>
-    </form>
+        <p className="form-footer">
+          Masz już konto? <Link to="/login">Zaloguj się</Link>
+        </p>
+      </form>
+    </AppShell>
   );
 }

@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import { AppShell } from './components/app-shell';
 import { HomePage } from './routes/home-page';
 import { LoginPage } from './routes/login-page';
 import { RegisterPage } from './routes/register-page';
@@ -14,28 +13,17 @@ import { ProtectedRoute, PublicOnlyRoute } from './routes/guards';
  *  - `/` — chroniona (ProtectedRoute); gość → `/login`. Odświeżenie nie wylogowuje
  *    (sesja w ciasteczku HttpOnly, `useSession` re-hydratuje stan).
  *  - `*` — nieznana ścieżka → `/` (guard i tak rozstrzygnie login vs apka).
+ *
+ * Konwencja: każdy ekran sam owija się w `AppShell` (spójnie w całej apce), routing nie
+ * dokłada chrome'u — dzięki temu ekran ma pełną kontrolę nad nagłówkiem (np. akcje).
  */
 export function App(): ReactNode {
   return (
     <BrowserRouter>
       <Routes>
         <Route element={<PublicOnlyRoute />}>
-          <Route
-            path="/login"
-            element={
-              <AppShell>
-                <LoginPage />
-              </AppShell>
-            }
-          />
-          <Route
-            path="/register"
-            element={
-              <AppShell>
-                <RegisterPage />
-              </AppShell>
-            }
-          />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
         </Route>
 
         <Route element={<ProtectedRoute />}>

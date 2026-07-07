@@ -25,16 +25,22 @@ const CODE_MESSAGES: Record<string, string> = {
   INVALID_EMAIL: 'Niepoprawny adres e-mail.',
 };
 
-const FALLBACK = 'Coś poszło nie tak. Spróbuj ponownie.';
+/**
+ * Fallback dla braku danych i dla wyjątków sieciowych. Metody klienta Better Auth zwracają
+ * `{ error }` tylko dla odpowiedzi HTTP — przy awarii sieci (offline, backend down) RZUCAJĄ
+ * (better-fetch nie łapie wyjątku natywnego `fetch`). Handlery submitu łapią to i pokazują ten
+ * komunikat zamiast zawiesić formularz.
+ */
+export const GENERIC_AUTH_ERROR = 'Coś poszło nie tak. Spróbuj ponownie.';
 
 /**
  * Zamienia błąd klienta Better Auth na komunikat dla użytkownika. Preferuje mapowanie po
  * stabilnym `code`; jeśli kodu brak — użyje `message` z serwera; w ostateczności fallback.
  */
 export function authErrorMessage(error: AuthClientError | null | undefined): string {
-  if (!error) return FALLBACK;
+  if (!error) return GENERIC_AUTH_ERROR;
   const mapped = error.code ? CODE_MESSAGES[error.code] : undefined;
   if (mapped) return mapped;
   if (error.message && error.message.trim().length > 0) return error.message;
-  return FALLBACK;
+  return GENERIC_AUTH_ERROR;
 }

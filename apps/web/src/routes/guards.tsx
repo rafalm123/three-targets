@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
-import { LoadingState } from '../components/states';
-import { ErrorState } from '../components/states';
+import { ErrorState, LoadingState } from '../components/states';
 import { useSession } from '../lib/auth-client';
 
 /**
@@ -12,25 +11,52 @@ import { useSession } from '../lib/auth-client';
  * (`isPending`) pokazujemy Loading zamiast migać ekranem logowania i wyrzucać zalogowanego.
  */
 
+/** Domyślna trasa po zalogowaniu, gdy nie ma zapamiętanej ścieżki źródłowej. */
+const DEFAULT_AUTHED_PATH = '/';
+
+/** Kształt stanu nawigacji przekazywanego przez ProtectedRoute do /login. */
+interface FromLocationState {
+  from?: string;
+}
+
 /** Gość → /login (z zapamiętaniem docelowej ścieżki). Zalogowany → renderuje trasę potomną. */
 export function ProtectedRoute(): ReactNode {
-  const { data: session, isPending, error } = useSession();
+  const { data: session, isPending, error, refetch } = useSession();
   const location = useLocation();
 
   if (isPending) return <LoadingState label="Sprawdzanie sesji…" />;
-  // Błąd pobrania sesji (np. offline) — nie zakładamy zalogowania; pokazujemy błąd, nie biały ekran.
-  if (error) return <ErrorState message="Nie udało się sprawdzić sesji." />;
-  if (!session) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  // Błąd pobrania sesji (np. offline) — nie zakładamy zalogowania; pokazujemy błąd z akcją
+  // ponowienia (refetch), a nie biały ekran.
+  if (error) {
+    return (
+      <ErrorState
+        message="Nie udało się sprawdzić sesji."
+        onRetry={() => {
+          void refetch();
+        }}
+      />
+    );
+  }
+  if (!session) {
+    // Zapamiętujemy pełną ścieżkę (z query), by po zalogowaniu wrócić dokładnie tu.
+    const from = `${location.pathname}${location.search}`;
+    return <Navigate to="/login" replace state={{ from } satisfies FromLocationState} />;
+  }
 
   return <Outlet />;
 }
 
-/** Trasy tylko dla gościa (login/rejestracja). Zalogowany → apka (/). */
+/** Trasy tylko dla gościa (login/rejestracja). Zalogowany → wraca na zapamiętaną ścieżkę lub /. */
 export function PublicOnlyRoute(): ReactNode {
   const { data: session, isPending } = useSession();
+  const location = useLocation();
 
   if (isPending) return <LoadingState label="Sprawdzanie sesji…" />;
-  if (session) return <Navigate to="/" replace />;
+  if (session) {
+    const state = location.state as FromLocationState | null;
+    const target = state?.from ?? DEFAULT_AUTHED_PATH;
+    return <Navigate to={target} replace />;
+  }
 
   return <Outlet />;
 }
