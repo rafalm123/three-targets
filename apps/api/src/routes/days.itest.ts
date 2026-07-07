@@ -30,7 +30,12 @@ async function signUp(): Promise<string> {
   });
   if (res.statusCode !== 200) throw new Error(`sign-up failed: ${res.statusCode} ${res.body}`);
   const setCookie = res.headers['set-cookie'];
-  return Array.isArray(setCookie) ? setCookie.join('; ') : String(setCookie);
+  const raw = Array.isArray(setCookie) ? setCookie : [String(setCookie)];
+  // Tylko pary name=value (bez atrybutów Set-Cookie: Path/HttpOnly/SameSite/Max-Age).
+  return raw
+    .map((c) => c.split(';')[0] ?? '')
+    .filter(Boolean)
+    .join('; ');
 }
 
 const entry = { main: { title: 'Główny' }, secondary: [{ title: 'A' }, { title: 'B' }] };
