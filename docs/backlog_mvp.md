@@ -61,7 +61,7 @@ wieczorem oznaczyć co dowiózł → przeglądać historię poprzednich dni → 
 ## 🟦 Backend
 | # | Task | Definition of Done |
 |---|------|--------------------|
-| BE-9 | Model dnia i celów | Jeden dzień na użytkownika na datę (1 główny + 2 poboczne). `days.status` jako jawna maszyna stanów: `morning_pending` → `evening_pending` → `closed`. |
+| BE-9 | Model dnia i celów | Jeden dzień na użytkownika na datę (1 główny + 2 poboczne). `days.status` jako maszyna stanów **`evening_pending` → `closed`** (zmienione decyzją @sa w BE-10 — usunięto martwy `morning_pending`; „przed wpisem" = brak rekordu). Aktualna definicja: `CLAUDE.md §4`. |
 | BE-10 | Zapis porannego wpisu | Endpoint tworzy dzień: 1 główny + 2 poboczne + opcjonalne notatki. Walidacja: dokładnie 1 główny i 2 poboczne; jeden wpis na dzień. **(z review BE-9):** dodać unikat DB `(dayId, kind, position)` (guard przed double-submit) — zastąpi redundantny `@@index([dayId])` na `goal`. |
 | BE-11 | Edycja porannego wpisu | Poprawa wpisu **tylko gdy `date` = dziś (serwer) i status `evening_pending`**; `closed` niemutowalny, brak edycji wstecz (decyzja @sa). |
 | BE-12 | Wieczorne odznaczenie | Endpoint oznacza każdy cel: dowieziony / nie + opcjonalna notatka; przełącza dzień na `closed`. |
