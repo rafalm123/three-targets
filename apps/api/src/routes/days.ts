@@ -1,5 +1,12 @@
 import { Prisma } from '@prisma/client';
-import { type ApiError, apiErrorSchema, type Day, daySchema, morningEntrySchema } from '@trzy-cele/shared';
+import {
+  type ApiError,
+  apiErrorSchema,
+  type Day,
+  dayResponseSchema,
+  daySchema,
+  morningEntrySchema,
+} from '@trzy-cele/shared';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { userToday } from '../lib/day-boundary';
 import { prisma } from '../lib/prisma';
@@ -82,6 +89,25 @@ export const dayRoutes: FastifyPluginAsyncZod = async (app) => {
         }
         throw err;
       }
+    },
+  );
+
+  // BE-13 — pobranie dnia „dzisiaj" (data z timezone usera). Brak rekordu → { day: null }
+  // (pierwszoklasowa odpowiedź, nie błąd) → FE kieruje do „wypełnij rano".
+  app.get(
+    '/days/today',
+    {
+      preHandler: requireAuth,
+      schema: { response: { 200: dayResponseSchema } },
+    },
+    async (request) => {
+      const { user } = getAuthSession(request);
+      const date = userToday(user.timezone);
+      const day = await prisma.day.findUnique({
+        where: { userId_date: { userId: user.id, date } },
+        include: { goals: { orderBy: { position: 'asc' } } },
+      });
+      return { day: day ? toDayResponse(day) : null };
     },
   );
 };

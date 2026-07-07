@@ -87,3 +87,33 @@ describe('POST /api/days (integracja API ↔ DB)', () => {
     expect(res.statusCode).toBe(400);
   });
 });
+
+describe('GET /api/days/today (integracja API ↔ DB)', () => {
+  it('gość bez sesji → 401', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/days/today' });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('przed wpisem porannym → 200 { day: null }', async () => {
+    const cookie = await signUp();
+    const res = await app.inject({ method: 'GET', url: '/api/days/today', headers: { cookie } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().day).toBeNull();
+  });
+
+  it('po wpisie porannym → 200, dzień z 3 celami', async () => {
+    const cookie = await signUp();
+    await app.inject({
+      method: 'POST',
+      url: '/api/days',
+      headers: { cookie, 'content-type': 'application/json' },
+      payload: entry,
+    });
+    const res = await app.inject({ method: 'GET', url: '/api/days/today', headers: { cookie } });
+    expect(res.statusCode).toBe(200);
+    const day = res.json().day;
+    expect(day).not.toBeNull();
+    expect(day.status).toBe('evening_pending');
+    expect(day.goals).toHaveLength(3);
+  });
+});
