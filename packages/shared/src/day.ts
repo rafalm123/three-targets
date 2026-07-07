@@ -45,3 +45,18 @@ export type Day = z.infer<typeof daySchema>;
  * („przed wpisem porannym"; steruje FE do akcji „wypełnij rano"). */
 export const dayResponseSchema = z.object({ day: daySchema.nullable() });
 export type DayResponse = z.infer<typeof dayResponseSchema>;
+
+/** Oznaczenie pojedynczego celu wieczorem. */
+export const goalMarkSchema = z.object({
+  id: z.string(),
+  completed: z.boolean(),
+  completedNote: z.string().trim().max(2000).optional(),
+});
+export type GoalMark = z.infer<typeof goalMarkSchema>;
+
+/** Wieczorne odznaczenie: dokładnie 3 cele (każdy dowieziony/nie) + opcjonalna notatka wieczorna. */
+export const eveningEntrySchema = z.object({
+  goals: z.array(goalMarkSchema).length(3),
+  eveningNote: z.string().trim().max(2000).optional(),
+});
+export type EveningEntry = z.infer<typeof eveningEntrySchema>;

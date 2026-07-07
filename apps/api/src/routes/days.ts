@@ -5,10 +5,12 @@ import {
   type Day,
   dayResponseSchema,
   daySchema,
+  eveningEntrySchema,
   morningEntrySchema,
 } from '@trzy-cele/shared';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { userToday } from '../lib/day-boundary';
+import { checkCanCloseDay } from '../lib/day-service';
 import { prisma } from '../lib/prisma';
 import { getAuthSession, requireAuth } from '../lib/require-auth';
 
@@ -108,6 +110,58 @@ export const dayRoutes: FastifyPluginAsyncZod = async (app) => {
         include: { goals: { orderBy: { position: 'asc' } } },
       });
       return { day: day ? toDayResponse(day) : null };
+    },
+  );
+
+  // BE-12 — wieczorne odznaczenie: oznacza każdy z 3 celów (dowieziony/nie + opcjonalna notatka),
+  // zapisuje notatkę wieczorną i przełącza dzień evening_pending → closed. Reguły przejścia
+  // (istnienie / niemutowalność closed / spójność celów) w checkCanCloseDay. Zapis atomowy (transakcja).
+  app.post(
+    '/days/today/evening',
+    {
+      preHandler: requireAuth,
+      schema: {
+        body: eveningEntrySchema,
+        response: {
+          200: daySchema,
+          400: apiErrorSchema,
+          404: apiErrorSchema,
+          409: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { user } = getAuthSession(request);
+      const body = request.body;
+      const date = userToday(user.timezone);
+
+      const day = await prisma.day.findUnique({
+        where: { userId_date: { userId: user.id, date } },
+        include: { goals: true },
+      });
+
+      const guard = checkCanCloseDay(day, body.goals.map((g) => g.id));
+      if (!guard.ok) {
+        const err: ApiError = { error: { message: guard.message, code: guard.code } };
+        return reply.status(guard.status).send(err);
+      }
+
+      // guard.ok gwarantuje: dzień istnieje, evening_pending, a body.goals to dokładnie cele tego dnia.
+      const updated = await prisma.$transaction(async (tx) => {
+        for (const mark of body.goals) {
+          await tx.goal.update({
+            where: { id: mark.id },
+            data: { completed: mark.completed, completedNote: mark.completedNote ?? null },
+          });
+        }
+        return tx.day.update({
+          where: { userId_date: { userId: user.id, date } },
+          data: { eveningNote: body.eveningNote ?? null, status: 'closed' },
+          include: { goals: { orderBy: { position: 'asc' } } },
+        });
+      });
+
+      return reply.status(200).send(toDayResponse(updated));
     },
   );
 };
