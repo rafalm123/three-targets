@@ -40,3 +40,8 @@ export const daySchema = z.object({
   goals: z.array(goalSchema),
 });
 export type Day = z.infer<typeof daySchema>;
+
+/** Odpowiedź „pobierz dzień": dzień z celami, albo `null` = brak wpisu na tę datę
+ * („przed wpisem porannym"; steruje FE do akcji „wypełnij rano"). */
+export const dayResponseSchema = z.object({ day: daySchema.nullable() });
+export type DayResponse = z.infer<typeof dayResponseSchema>;
