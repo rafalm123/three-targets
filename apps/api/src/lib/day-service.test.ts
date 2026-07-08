@@ -1,7 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { checkCanCloseDay } from './day-service';
+import { checkCanCloseDay, checkDayMutable } from './day-service';
 
 const goals = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+
+describe('checkDayMutable', () => {
+  it('brak dnia → 404 NO_DAY_TODAY', () => {
+    expect(checkDayMutable(null)).toMatchObject({ ok: false, status: 404, code: 'NO_DAY_TODAY' });
+  });
+  it('dzień closed → 409 DAY_ALREADY_CLOSED (brak edycji wstecz)', () => {
+    expect(checkDayMutable({ status: 'closed' })).toMatchObject({
+      ok: false,
+      status: 409,
+      code: 'DAY_ALREADY_CLOSED',
+    });
+  });
+  it('evening_pending → ok', () => {
+    expect(checkDayMutable({ status: 'evening_pending' })).toEqual({ ok: true });
+  });
+});
 
 describe('checkCanCloseDay', () => {
   it('brak dnia → 404 NO_DAY_TODAY', () => {

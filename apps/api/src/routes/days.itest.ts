@@ -241,3 +241,101 @@ describe('POST /api/days/today/evening (integracja API ↔ DB)', () => {
     expect(check.json().day.status).toBe('evening_pending');
   });
 });
+
+describe('PATCH /api/days/today (edycja poranna — integracja API ↔ DB)', () => {
+  it('gość bez sesji → 401', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/days/today',
+      headers: { 'content-type': 'application/json' },
+      payload: entry,
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('brak wpisu porannego → 404 NO_DAY_TODAY', async () => {
+    const cookie = await signUp();
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/days/today',
+      headers: { cookie, 'content-type': 'application/json' },
+      payload: entry,
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error.code).toBe('NO_DAY_TODAY');
+  });
+
+  it('edycja evening_pending → 200, treść poranna nadpisana, status bez zmian', async () => {
+    const cookie = await signUp();
+    await createMorning(cookie);
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/days/today',
+      headers: { cookie, 'content-type': 'application/json' },
+      payload: {
+        main: { title: 'Nowy główny', note: 'notka' },
+        secondary: [{ title: 'Nowy A' }, { title: 'Nowy B' }],
+        morningNote: 'zmienione rano',
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const day = res.json();
+    expect(day.status).toBe('evening_pending');
+    expect(day.morningNote).toBe('zmienione rano');
+    const main = day.goals.find((g: { kind: string }) => g.kind === 'main');
+    expect(main.title).toBe('Nowy główny');
+    expect(main.note).toBe('notka');
+    expect(day.goals.filter((g: { kind: string }) => g.kind === 'secondary').map((g: { title: string }) => g.title)).toEqual([
+      'Nowy A',
+      'Nowy B',
+    ]);
+  });
+
+  it('edycja po zamknięciu → 409 DAY_ALREADY_CLOSED (brak edycji wstecz)', async () => {
+    const cookie = await signUp();
+    const day = await createMorning(cookie);
+    const close = await app.inject({
+      method: 'POST',
+      url: '/api/days/today/evening',
+      headers: { cookie, 'content-type': 'application/json' },
+      payload: { goals: day.goals.map((g) => ({ id: g.id, completed: true })) },
+    });
+    expect(close.statusCode).toBe(200);
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/days/today',
+      headers: { cookie, 'content-type': 'application/json' },
+      payload: entry,
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('DAY_ALREADY_CLOSED');
+  });
+
+  it('replace (nie merge): PATCH bez pól opcjonalnych czyści morningNote i note celów do null', async () => {
+    const cookie = await signUp();
+    // dzień z wypełnionymi notatkami…
+    await app.inject({
+      method: 'POST',
+      url: '/api/days',
+      headers: { cookie, 'content-type': 'application/json' },
+      payload: {
+        main: { title: 'G', note: 'nota głównego' },
+        secondary: [{ title: 'A', note: 'nota A' }, { title: 'B' }],
+        morningNote: 'nota poranna',
+      },
+    });
+    // …edycja BEZ morningNote i BEZ note → pełne zastąpienie zeruje pominięte pola
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/days/today',
+      headers: { cookie, 'content-type': 'application/json' },
+      payload: { main: { title: 'G2' }, secondary: [{ title: 'A2' }, { title: 'B2' }] },
+    });
+    expect(res.statusCode).toBe(200);
+    const day = res.json();
+    expect(day.morningNote).toBeNull();
+    const main = day.goals.find((g: { kind: string }) => g.kind === 'main');
+    expect(main.note).toBeNull();
+    expect(main.title).toBe('G2');
+  });
+});
