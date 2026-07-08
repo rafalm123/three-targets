@@ -6,6 +6,9 @@ import { prisma } from '../lib/prisma';
 import { buildServer } from '../server';
 
 // Integracja API ↔ DB (realny Postgres). Świeży user per test → izolacja stanu.
+// UWAGA: „dziś" liczone jest tu (seed) i w endpointcie osobno — teoretycznie krucho, gdyby
+// północ Europe/Warsaw wypadła w oknie ~ms między seedem a requestem. Ryzyko pomijalne;
+// pełne pokrycie logiki granic jest w streak.test.ts (deterministyczne, bez zależności od zegara).
 let app: FastifyInstance;
 
 beforeAll(async () => {

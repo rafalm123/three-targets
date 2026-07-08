@@ -18,6 +18,12 @@ describe('computeStreak', () => {
   it('grace dla „dziś": dziś NIE closed, wczoraj i przedwczoraj closed → current 2', () => {
     const r = computeStreak(['2026-07-06', '2026-07-07'], TODAY);
     expect(r.current).toBe(2);
+    expect(r.longest).toBe(2);
+  });
+
+  it('dziś closed, wczoraj luka → current 1 (dziś liczy się mimo braku wczoraj)', () => {
+    const r = computeStreak(['2026-07-08'], TODAY);
+    expect(r).toEqual({ current: 1, longest: 1, totalDays: 1 });
   });
 
   it('przerwa w przeszłości zrywa current (dziś nie closed, luka wczoraj)', () => {
