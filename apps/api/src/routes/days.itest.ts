@@ -433,6 +433,19 @@ describe('GET /api/days/history (integracja API ↔ DB)', () => {
     expect(page2.nextCursor).toBeNull();
   });
 
+  it('pełna strona bez nadmiaru (limit == liczba dni) → nextCursor: null', async () => {
+    const { cookie, userId } = await signUpWithId();
+    await seedDay(userId, '2018-03-01', { mainTitle: 'A' });
+    await seedDay(userId, '2018-03-02', { mainTitle: 'B' });
+    await seedDay(userId, '2018-03-03', { mainTitle: 'C' });
+
+    const res = await app.inject({ method: 'GET', url: '/api/days/history?limit=3', headers: { cookie } });
+    expect(res.statusCode).toBe(200);
+    const { items, nextCursor } = res.json();
+    expect(items).toHaveLength(3);
+    expect(nextCursor).toBeNull();
+  });
+
   it('dzisiejszy dzień wykluczony z historii', async () => {
     const { cookie, userId } = await signUpWithId();
     await createMorning(cookie); // dzień „dzisiaj" (evening_pending)
