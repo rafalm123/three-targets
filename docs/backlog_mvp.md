@@ -68,6 +68,7 @@ wieczorem oznaczyć co dowiózł → przeglądać historię poprzednich dni → 
 | BE-13 | Pobranie dnia | Zwraca dzień (dzisiejszy lub po dacie) z celami i stanem. |
 | BE-14 | Historia dni | Lista przeszłych dni od najnowszych, **stronicowanie keyset po dacie** (`?before=YYYY-MM-DD&limit=`) → `{ items, nextCursor }`; element = podsumowanie (data, status, tytuł głównego, flagi completed 3 celów), bez pełnych notatek (decyzja @sa). |
 | BE-15 | Licznik dni | `GET /api/stats/streak` → `{ current, longest, totalDays, asOfDate }`. **Dzień liczony = `closed`**; seria = kolejne dni kalendarzowe `closed` wstecz od „dziś" (decyzja @sa); liczone on-the-fly z `days`. |
+| BE-17 | Pobranie dnia po dacie | `GET /api/days/:date` — pełny dzień (z notatkami) dla FE-10 „klik w dzień z historii" (historia zwraca okrojone podsumowania). Read-only; walidacja kalendarzowa + `date ≤ dziś` (timezone usera); brak wpisu → `{ day: null }`; reuse `dayResponseSchema`. Luka wykryta w konsultacji @sa po zamknięciu BE-15. |
 | BE-16 | Reguła doby | „Dzień" = lokalna data użytkownika; **„dzisiaj" wyznacza serwer** z `users.timezone`. Unikat `(userId, date)` chroni przed duplikatem. **⚠️ footgun `@db.Date`/Prisma (z review BE-9):** datę konstruować jako `new Date('YYYY-MM-DD')` (UTC midnight) z daty lokalnej wyliczonej z `users.timezone` — NIGDY z surowego `new Date()` (przesunie dzień). |
 
 ## 🟩 Frontend
