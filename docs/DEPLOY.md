@@ -1,0 +1,44 @@
+# Deploy — Render (FND-6)
+
+Jeden kontener Docker (API `/api/*` + statyk SPA `/`, same-origin) na Renderze (free), baza na Neonie.
+Konfiguracja: [`render.yaml`](../render.yaml) (Blueprint). Migracje stosują się **na starcie kontenera**
+(`apps/api/docker-entrypoint.sh` → `prisma migrate deploy`, idempotentne).
+
+## Kroki właściciela (jednorazowo)
+
+Wymagają konta Render i danych Neona — dlatego robi to właściciel.
+
+1. **Załóż konto** na <https://render.com> (GitHub OAuth) i połącz repo `three-targets`.
+2. **New → Blueprint** → wskaż repo. Render wczyta `render.yaml` i utworzy usługę `trzy-cele`
+   (Docker, region Frankfurt, plan Free, auto-deploy z `main`).
+3. **Uzupełnij sekrety** (4 zmienne `sync:false`) w zakładce *Environment* usługi:
+   - `DATABASE_URL` — Neon, connection string przez **pooler** (host z `-pooler`), `?sslmode=require`.
+   - `DIRECT_URL` — Neon, połączenie **bezpośrednie** (host **bez** `-pooler`), `?sslmode=require`.
+     Używane przez `migrate deploy` (migracje nie powinny iść przez pooler).
+   - `BETTER_AUTH_SECRET` — wygeneruj: `openssl rand -base64 32`.
+   - `BETTER_AUTH_URL` — publiczny URL usługi. Nazwa usługi jest ustalona w `render.yaml`
+     (`trzy-cele`), więc URL jest **przewidywalny**: wpisz od razu `https://trzy-cele.onrender.com`
+     (Render nada tę domenę, o ile nazwa wolna). Dzięki temu unikasz cyklu „pierwszy deploy padnie
+     na walidacji env → uzupełnij → redeploy". Jeśli Render nada inną domenę — popraw wartość i zrób
+     ponowny deploy. (Better Auth używa tego jako `baseURL` + do zaufanych originów.)
+   `NODE_ENV=production` jest już w `render.yaml`; `PORT` wstrzykuje Render automatycznie.
+4. **Deploy** (Manual Deploy / push na `main`). Pierwszy build ~kilka minut.
+
+## Weryfikacja po deployu (robi zespół — smoke test na prodzie)
+
+```bash
+BASE=https://<twoja-usługa>.onrender.com
+curl -s $BASE/api/health            # → {"status":"ok"}  (pierwszy request: cold start 30–50 s)
+```
+Następnie pełny rytuał `curl`-em na sesji: rejestracja → `POST /api/days` → `PATCH /api/days/today`
+→ `POST /api/days/today/evening` → `GET /api/days/history` → `GET /api/stats/streak`.
+Weryfikujemy to, czego CI nie sprawdza: cold start, Secure/same-origin cookies w prod, `migrate deploy`.
+
+## Uwagi
+
+- **Cold start (free):** kontener usypia po ~15 min → wybudzenie 30–50 s (świadomy trade-off, CLAUDE.md §2).
+  Plan B (jeśli uwiera): cron pingujący `/api/health` rano/wieczorem albo VPS Hetzner.
+- **Migracje:** idempotentne przy każdym starcie; nowe migracje z `main` zastosują się przy auto-deployu.
+- **Backup (FND-7):** wykonać **zaraz po** deployu i **przed** pierwszym realnym wpisem; „done" = udany
+  testowy restore z dumpa (nie sam cron).
+- **Portowalność:** `render.yaml` to wygoda, nie lock-in — ten sam obraz stanie na VPS/Fly (zmiana hostingu = konfiguracja, nie kod).

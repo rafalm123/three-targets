@@ -14,6 +14,9 @@ COPY apps/api/prisma apps/api/prisma
 COPY apps/web/package.json apps/web/
 COPY packages/shared/package.json packages/shared/
 # postinstall (prisma generate) potrzebuje schematu — dlatego prisma/ kopiujemy powyżej.
+# UWAGA: instalujemy pełne zależności (bez --prod). docker-entrypoint.sh używa CLI Prisma (devDep)
+# do `migrate deploy` na starcie — ewentualne przyszłe odchudzanie (--prod / prune) NIE może usunąć
+# `prisma` z obrazu, inaczej start padnie na migracji.
 RUN pnpm install --frozen-lockfile
 
 # Reszta źródeł + build (typecheck + tsup API + vite web).
@@ -22,7 +25,9 @@ RUN pnpm build
 
 ENV NODE_ENV=production
 EXPOSE 3000
+# Entrypoint wykonywalny (chmod jako root, zanim zejdziemy na usera node).
+RUN chmod +x apps/api/docker-entrypoint.sh
 # Nie root w runtime (hardening); pliki są world-readable, app nie pisze do FS.
 USER node
-# Migracje na prod: `prisma migrate deploy` uruchamiane przy wdrożeniu (FND-6), nie tutaj.
-CMD ["node", "apps/api/dist/index.js"]
+# Start: `prisma migrate deploy` (idempotentne) → serwer. Szczegóły w docker-entrypoint.sh.
+CMD ["/app/apps/api/docker-entrypoint.sh"]

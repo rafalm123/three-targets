@@ -1,0 +1,28 @@
+# Render Blueprint (FND-6) — jeden kontener: API (/api/*) + statyk SPA (/), same-origin.
+# To wygoda konfiguracyjna, nie lock-in: ten sam obraz Dockera stanie na dowolnym hoście
+# (VPS/Fly/…) — portowalność daje Docker + Postgres + Better Auth, nie ten plik.
+#
+# Sekrety (sync: false) NIE są w repo — uzupełnia je właściciel w dashboardzie Rendera
+# (patrz docs/DEPLOY.md). PORT wstrzykuje Render (app czyta process.env.PORT).
+services:
+  - type: web
+    name: trzy-cele
+    runtime: docker
+    dockerfilePath: apps/api/Dockerfile
+    dockerContext: .
+    region: frankfurt # blisko Neona (eu-central-1) → niższe opóźnienie do bazy
+    plan: free
+    branch: main
+    autoDeploy: true
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL # Neon: connection string przez POOLER (-pooler), sslmode=require
+        sync: false
+      - key: DIRECT_URL # Neon: połączenie BEZPOŚREDNIE (bez -pooler) — używane przez migrate deploy
+        sync: false
+      - key: BETTER_AUTH_SECRET # losowy sekret (openssl rand -base64 32)
+        sync: false
+      - key: BETTER_AUTH_URL # publiczny URL usługi, np. https://trzy-cele.onrender.com
+        sync: false
