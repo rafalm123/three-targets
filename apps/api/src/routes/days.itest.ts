@@ -488,18 +488,36 @@ describe('GET /api/days/:date (szczegóły dnia po dacie — integracja API ↔ 
 
   it('przeszła data z wpisem → 200, pełny dzień z notatkami i celami (nie okrojony)', async () => {
     const { cookie, userId } = await signUpWithId();
-    await seedDay(userId, '2020-06-01', { mainTitle: 'Historyczny', completed: [true, false, true] });
+    // Seed wprost z pełnymi notatkami — dowód, że BE-17 zwraca treść, której historia (BE-14) nie ma.
+    await prisma.day.create({
+      data: {
+        userId,
+        date: new Date('2020-06-01T00:00:00.000Z'),
+        status: 'closed',
+        morningNote: 'poranna notatka',
+        eveningNote: 'wieczorna notatka',
+        goals: {
+          create: [
+            { kind: 'main', position: 0, title: 'Historyczny', note: 'nota celu', completed: true, completedNote: 'dowiezione' },
+            { kind: 'secondary', position: 1, title: 'A', completed: false },
+            { kind: 'secondary', position: 2, title: 'B', completed: true },
+          ],
+        },
+      },
+    });
     const res = await app.inject({ method: 'GET', url: '/api/days/2020-06-01', headers: { cookie } });
     expect(res.statusCode).toBe(200);
     const day = res.json().day;
     expect(day).not.toBeNull();
     expect(day.date).toBe('2020-06-01');
     expect(day.status).toBe('closed');
-    expect(day.eveningNote).toBe('wieczór'); // pełne notatki (w przeciwieństwie do historii)
+    expect(day.morningNote).toBe('poranna notatka');
+    expect(day.eveningNote).toBe('wieczorna notatka');
     expect(day.goals).toHaveLength(3);
-    expect(day.goals[0]).toHaveProperty('note');
-    expect(day.goals[0]).toHaveProperty('completedNote');
-    expect(day.goals[0].completed).toBe(true);
+    const main = day.goals.find((g: { kind: string }) => g.kind === 'main');
+    expect(main.note).toBe('nota celu');
+    expect(main.completed).toBe(true);
+    expect(main.completedNote).toBe('dowiezione');
   });
 
   it('dzisiejsza data → 200, dzień „dzisiaj"', async () => {
