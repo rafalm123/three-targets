@@ -7,6 +7,8 @@ cd /app/apps/api
 
 # prisma migrate deploy jest idempotentne: stosuje tylko brakujące migracje, przy komplecie = no-op.
 # Używa directUrl (DIRECT_URL) — połączenie bezpośrednie, nie pooler Neona.
-pnpm exec prisma migrate deploy
+# Binarka wprost (NIE `pnpm exec`): USER node nie ma cache corepacka roota, więc `pnpm` dociągałby
+# się z rejestru npm przy każdym cold starcie — wywalamy sieć i corepack ze ścieżki bootu.
+node_modules/.bin/prisma migrate deploy
 
 exec node dist/index.js

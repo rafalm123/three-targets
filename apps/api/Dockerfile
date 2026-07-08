@@ -14,6 +14,9 @@ COPY apps/api/prisma apps/api/prisma
 COPY apps/web/package.json apps/web/
 COPY packages/shared/package.json packages/shared/
 # postinstall (prisma generate) potrzebuje schematu — dlatego prisma/ kopiujemy powyżej.
+# UWAGA: instalujemy pełne zależności (bez --prod). docker-entrypoint.sh używa CLI Prisma (devDep)
+# do `migrate deploy` na starcie — ewentualne przyszłe odchudzanie (--prod / prune) NIE może usunąć
+# `prisma` z obrazu, inaczej start padnie na migracji.
 RUN pnpm install --frozen-lockfile
 
 # Reszta źródeł + build (typecheck + tsup API + vite web).

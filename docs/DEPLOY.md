@@ -16,9 +16,11 @@ Wymagają konta Render i danych Neona — dlatego robi to właściciel.
    - `DIRECT_URL` — Neon, połączenie **bezpośrednie** (host **bez** `-pooler`), `?sslmode=require`.
      Używane przez `migrate deploy` (migracje nie powinny iść przez pooler).
    - `BETTER_AUTH_SECRET` — wygeneruj: `openssl rand -base64 32`.
-   - `BETTER_AUTH_URL` — publiczny URL usługi. **Chicken-egg:** URL znasz dopiero po utworzeniu
-     usługi (np. `https://trzy-cele.onrender.com`). Ustaw go po pierwszym deployu i uruchom
-     ponowny deploy (Better Auth używa go jako `baseURL` + do zaufanych originów).
+   - `BETTER_AUTH_URL` — publiczny URL usługi. Nazwa usługi jest ustalona w `render.yaml`
+     (`trzy-cele`), więc URL jest **przewidywalny**: wpisz od razu `https://trzy-cele.onrender.com`
+     (Render nada tę domenę, o ile nazwa wolna). Dzięki temu unikasz cyklu „pierwszy deploy padnie
+     na walidacji env → uzupełnij → redeploy". Jeśli Render nada inną domenę — popraw wartość i zrób
+     ponowny deploy. (Better Auth używa tego jako `baseURL` + do zaufanych originów.)
    `NODE_ENV=production` jest już w `render.yaml`; `PORT` wstrzykuje Render automatycznie.
 4. **Deploy** (Manual Deploy / push na `main`). Pierwszy build ~kilka minut.
 
