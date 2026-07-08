@@ -10,7 +10,7 @@ import {
 } from '@trzy-cele/shared';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { userToday } from '../lib/day-boundary';
-import { checkCanCloseDay } from '../lib/day-service';
+import { checkCanCloseDay, checkDayMutable } from '../lib/day-service';
 import { prisma } from '../lib/prisma';
 import { getAuthSession, requireAuth } from '../lib/require-auth';
 
@@ -171,6 +171,83 @@ export const dayRoutes: FastifyPluginAsyncZod = async (app) => {
             include: { goals: { orderBy: { position: 'asc' } } },
           });
           if (!full) throw new Error('Dzień zniknął w trakcie zamykania'); // nieosiągalne
+          return full;
+        });
+        return await reply.status(200).send(toDayResponse(updated));
+      } catch (err) {
+        if (err instanceof DayAlreadyClosedError) {
+          const conflict: ApiError = {
+            error: { message: 'Dzień jest już zamknięty', code: 'DAY_ALREADY_CLOSED' },
+          };
+          return await reply.status(409).send(conflict);
+        }
+        throw err;
+      }
+    },
+  );
+
+  // BE-11 — edycja porannego wpisu. Zastępuje treść poranną (1 główny + 2 poboczne + notatka)
+  // TYLKO gdy dzień = „dziś" i status evening_pending; closed niemutowalny, brak edycji wstecz
+  // (decyzja @sa). Niemutowalność egzekwowana atomowo (warunkowy updateMany) — wzorzec z BE-12.
+  app.patch(
+    '/days/today',
+    {
+      preHandler: requireAuth,
+      schema: {
+        body: morningEntrySchema,
+        response: { 200: daySchema, 404: apiErrorSchema, 409: apiErrorSchema },
+      },
+    },
+    async (request, reply) => {
+      const { user } = getAuthSession(request);
+      const body = request.body;
+      const date = userToday(user.timezone);
+
+      const day = await prisma.day.findUnique({
+        where: { userId_date: { userId: user.id, date } },
+        include: { goals: { orderBy: { position: 'asc' } } },
+      });
+
+      const guard = checkDayMutable(day);
+      if (!guard.ok) {
+        const err: ApiError = { error: { message: guard.message, code: guard.code } };
+        return reply.status(guard.status).send(err);
+      }
+      if (!day) throw new Error('Dzień zniknął po walidacji'); // nieosiągalne — zawężenie typu
+
+      const mainGoal = day.goals.find((g) => g.kind === 'main');
+      const secGoals = day.goals.filter((g) => g.kind === 'secondary');
+      if (!mainGoal || secGoals.length !== 2) {
+        throw new Error('Niespójny stan celów dnia'); // inwariant wpisu porannego (1 główny + 2 poboczne)
+      }
+
+      try {
+        const updated = await prisma.$transaction(async (tx) => {
+          const gate = await tx.day.updateMany({
+            where: { userId: user.id, date, status: 'evening_pending' },
+            data: { morningNote: body.morningNote ?? null },
+          });
+          if (gate.count === 0) throw new DayAlreadyClosedError();
+
+          await tx.goal.update({
+            where: { id: mainGoal.id },
+            data: { title: body.main.title, note: body.main.note ?? null },
+          });
+          for (let i = 0; i < secGoals.length; i++) {
+            const goal = secGoals[i];
+            const input = body.secondary[i];
+            if (!goal || !input) throw new Error('Niespójny stan celów pobocznych');
+            await tx.goal.update({
+              where: { id: goal.id },
+              data: { title: input.title, note: input.note ?? null },
+            });
+          }
+
+          const full = await tx.day.findUnique({
+            where: { userId_date: { userId: user.id, date } },
+            include: { goals: { orderBy: { position: 'asc' } } },
+          });
+          if (!full) throw new Error('Dzień zniknął w trakcie edycji'); // nieosiągalne
           return full;
         });
         return await reply.status(200).send(toDayResponse(updated));
