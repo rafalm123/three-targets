@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { prisma } from '../lib/prisma';
 import { buildServer } from '../server';
 
 // Test integracyjny — uderza w REALNY Postgres (lokalnie: docker-compose; CI: service container).
@@ -15,27 +16,58 @@ afterAll(async () => {
   await app.close();
 });
 
-/** Rejestruje świeżego usera i zwraca ciasteczko sesji (jak z formularza rejestracji). */
-async function signUp(): Promise<string> {
+/** Rejestruje świeżego usera; zwraca ciasteczko sesji i jego id (do bezpośredniego seedowania w DB). */
+async function signUpWithId(): Promise<{ cookie: string; userId: string }> {
+  const email = `it-${randomUUID()}@test.local`;
   const res = await app.inject({
     method: 'POST',
     url: '/api/auth/sign-up/email',
     headers: { origin: 'http://localhost:5173', 'content-type': 'application/json' },
-    payload: {
-      email: `it-${randomUUID()}@test.local`,
-      password: 'Passw0rd!23',
-      name: 'IT User',
-      timezone: 'Europe/Warsaw',
-    },
+    payload: { email, password: 'Passw0rd!23', name: 'IT User', timezone: 'Europe/Warsaw' },
   });
   if (res.statusCode !== 200) throw new Error(`sign-up failed: ${res.statusCode} ${res.body}`);
   const setCookie = res.headers['set-cookie'];
   const raw = Array.isArray(setCookie) ? setCookie : [String(setCookie)];
   // Tylko pary name=value (bez atrybutów Set-Cookie: Path/HttpOnly/SameSite/Max-Age).
-  return raw
+  const cookie = raw
     .map((c) => c.split(';')[0] ?? '')
     .filter(Boolean)
     .join('; ');
+  const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+  return { cookie, userId: user.id };
+}
+
+/** Rejestruje świeżego usera i zwraca samo ciasteczko sesji. */
+async function signUp(): Promise<string> {
+  return (await signUpWithId()).cookie;
+}
+
+/** Seeduje dzień o dowolnej dacie (API nie umie backdate'ować) — do testów historii. */
+async function seedDay(
+  userId: string,
+  dateStr: string,
+  opts: {
+    status?: 'closed' | 'evening_pending';
+    mainTitle?: string;
+    completed?: [boolean | null, boolean | null, boolean | null];
+  } = {},
+): Promise<void> {
+  const { status = 'closed', mainTitle = 'Główny', completed = [true, false, true] } = opts;
+  await prisma.day.create({
+    data: {
+      userId,
+      date: new Date(`${dateStr}T00:00:00.000Z`),
+      status,
+      eveningNote: status === 'closed' ? 'wieczór' : null,
+      goals: {
+        create: [
+          { kind: 'main', position: 0, title: mainTitle, completed: completed[0] },
+          { kind: 'secondary', position: 1, title: 'A', completed: completed[1] },
+          { kind: 'secondary', position: 2, title: 'B', completed: completed[2] },
+        ],
+      },
+    },
+  });
 }
 
 const entry = { main: { title: 'Główny' }, secondary: [{ title: 'A' }, { title: 'B' }] };
@@ -337,5 +369,78 @@ describe('PATCH /api/days/today (edycja poranna — integracja API ↔ DB)', () 
     const main = day.goals.find((g: { kind: string }) => g.kind === 'main');
     expect(main.note).toBeNull();
     expect(main.title).toBe('G2');
+  });
+});
+
+describe('GET /api/days/history (integracja API ↔ DB)', () => {
+  it('gość bez sesji → 401', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/days/history' });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('brak dni → 200 { items: [], nextCursor: null }', async () => {
+    const cookie = await signUp();
+    const res = await app.inject({ method: 'GET', url: '/api/days/history', headers: { cookie } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ items: [], nextCursor: null });
+  });
+
+  it('przeszłe dni od najnowszych; podsumowanie bez pełnych notatek', async () => {
+    const { cookie, userId } = await signUpWithId();
+    await seedDay(userId, '2020-01-01', { mainTitle: 'Dzień 1', completed: [true, true, true] });
+    await seedDay(userId, '2020-01-03', {
+      mainTitle: 'Dzień 3',
+      status: 'evening_pending',
+      completed: [false, true, null],
+    });
+    await seedDay(userId, '2020-01-02', { mainTitle: 'Dzień 2' });
+
+    const res = await app.inject({ method: 'GET', url: '/api/days/history', headers: { cookie } });
+    expect(res.statusCode).toBe(200);
+    const { items, nextCursor } = res.json();
+    expect(items.map((d: { date: string }) => d.date)).toEqual(['2020-01-03', '2020-01-02', '2020-01-01']);
+    expect(nextCursor).toBeNull();
+
+    const first = items[0];
+    expect(first.mainTitle).toBe('Dzień 3');
+    expect(first.status).toBe('evening_pending');
+    expect(first.goalsCompleted).toEqual([false, true, null]);
+    // bez pełnych notatek w kształcie podsumowania
+    expect(first).not.toHaveProperty('morningNote');
+    expect(first).not.toHaveProperty('eveningNote');
+    expect(first).not.toHaveProperty('goals');
+  });
+
+  it('keyset: limit=2 → nextCursor, druga strona przez ?before=', async () => {
+    const { cookie, userId } = await signUpWithId();
+    await seedDay(userId, '2019-05-01', { mainTitle: 'A' });
+    await seedDay(userId, '2019-05-02', { mainTitle: 'B' });
+    await seedDay(userId, '2019-05-03', { mainTitle: 'C' });
+
+    const p1 = await app.inject({ method: 'GET', url: '/api/days/history?limit=2', headers: { cookie } });
+    expect(p1.statusCode).toBe(200);
+    const page1 = p1.json();
+    expect(page1.items.map((d: { date: string }) => d.date)).toEqual(['2019-05-03', '2019-05-02']);
+    expect(page1.nextCursor).toBe('2019-05-02');
+
+    const p2 = await app.inject({
+      method: 'GET',
+      url: `/api/days/history?limit=2&before=${page1.nextCursor}`,
+      headers: { cookie },
+    });
+    const page2 = p2.json();
+    expect(page2.items.map((d: { date: string }) => d.date)).toEqual(['2019-05-01']);
+    expect(page2.nextCursor).toBeNull();
+  });
+
+  it('dzisiejszy dzień wykluczony z historii', async () => {
+    const { cookie, userId } = await signUpWithId();
+    await createMorning(cookie); // dzień „dzisiaj" (evening_pending)
+    await seedDay(userId, '2020-06-01', { mainTitle: 'Przeszły' });
+
+    const res = await app.inject({ method: 'GET', url: '/api/days/history', headers: { cookie } });
+    const { items } = res.json();
+    expect(items).toHaveLength(1);
+    expect(items[0].date).toBe('2020-06-01');
   });
 });

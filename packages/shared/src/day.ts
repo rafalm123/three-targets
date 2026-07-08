@@ -60,3 +60,28 @@ export const eveningEntrySchema = z.object({
   eveningNote: z.string().trim().max(2000).optional(),
 });
 export type EveningEntry = z.infer<typeof eveningEntrySchema>;
+
+/** Podsumowanie dnia w historii — BEZ pełnych notatek (decyzja @sa).
+ * `goalsCompleted` = flagi `completed` celów wg pozycji (null = nieoznaczony). */
+export const daySummarySchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  status: dayStatusSchema,
+  mainTitle: z.string(),
+  goalsCompleted: z.array(z.boolean().nullable()),
+});
+export type DaySummary = z.infer<typeof daySummarySchema>;
+
+/** Historia dni: keyset po dacie malejąco. `nextCursor` = data do `?before=` następnej
+ * (starszej) strony, albo `null` gdy nie ma więcej. */
+export const dayHistorySchema = z.object({
+  items: z.array(daySummarySchema),
+  nextCursor: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+});
+export type DayHistory = z.infer<typeof dayHistorySchema>;
+
+/** Parametry zapytania historii. `before` = kursor keyset (data), `limit` domyślnie 30 (max 100). */
+export const dayHistoryQuerySchema = z.object({
+  before: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(30),
+});
+export type DayHistoryQuery = z.infer<typeof dayHistoryQuerySchema>;

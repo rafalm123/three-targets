@@ -3,13 +3,16 @@ import {
   type ApiError,
   apiErrorSchema,
   type Day,
+  dayHistoryQuerySchema,
+  dayHistorySchema,
   dayResponseSchema,
   daySchema,
+  type DaySummary,
   eveningEntrySchema,
   morningEntrySchema,
 } from '@trzy-cele/shared';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
-import { userToday } from '../lib/day-boundary';
+import { dateOnlyUtc, userToday } from '../lib/day-boundary';
 import { checkCanCloseDay, checkDayMutable } from '../lib/day-service';
 import { prisma } from '../lib/prisma';
 import { getAuthSession, requireAuth } from '../lib/require-auth';
@@ -35,6 +38,17 @@ function toDayResponse(day: DayWithGoals): Day {
       completed: g.completed,
       completedNote: g.completedNote,
     })),
+  };
+}
+
+/** Podsumowanie dnia do historii (BE-14) — bez pełnych notatek; flagi completed wg pozycji. */
+function toDaySummary(day: DayWithGoals): DaySummary {
+  const main = day.goals.find((g) => g.kind === 'main');
+  return {
+    date: day.date.toISOString().slice(0, 10),
+    status: day.status,
+    mainTitle: main?.title ?? '',
+    goalsCompleted: day.goals.map((g) => g.completed),
   };
 }
 
@@ -113,6 +127,37 @@ export const dayRoutes: FastifyPluginAsyncZod = async (app) => {
         include: { goals: { orderBy: { position: 'asc' } } },
       });
       return { day: day ? toDayResponse(day) : null };
+    },
+  );
+
+  // BE-14 — historia dni: przeszłe dni (date < „dziś") od najnowszych, keyset po dacie.
+  // Podsumowania bez pełnych notatek (decyzja @sa). `?before=YYYY-MM-DD` = kursor, `?limit=` (≤100, dom. 30).
+  app.get(
+    '/days/history',
+    {
+      preHandler: requireAuth,
+      schema: { querystring: dayHistoryQuerySchema, response: { 200: dayHistorySchema } },
+    },
+    async (request) => {
+      const { user } = getAuthSession(request);
+      const { before, limit } = request.query;
+      const today = userToday(user.timezone);
+      // „Przeszłe" = ściśle przed dziś; kursor `before` cofa dalej (cap na dziś chroni przed obejściem).
+      const beforeCandidate = before ? dateOnlyUtc(before) : today;
+      const upperBound = beforeCandidate < today ? beforeCandidate : today;
+
+      const rows = await prisma.day.findMany({
+        where: { userId: user.id, date: { lt: upperBound } },
+        orderBy: { date: 'desc' },
+        take: limit + 1, // +1 sonduje istnienie kolejnej strony
+        include: { goals: { orderBy: { position: 'asc' } } },
+      });
+
+      const hasMore = rows.length > limit;
+      const items = (hasMore ? rows.slice(0, limit) : rows).map(toDaySummary);
+      const last = items.at(-1);
+      const nextCursor = hasMore && last ? last.date : null;
+      return { items, nextCursor };
     },
   );
 
