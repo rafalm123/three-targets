@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { addDaysIso, localDateInTimeZone } from '../lib/day-boundary';
 import { prisma } from '../lib/prisma';
 import { buildServer } from '../server';
 
@@ -455,5 +456,58 @@ describe('GET /api/days/history (integracja API ↔ DB)', () => {
     const { items } = res.json();
     expect(items).toHaveLength(1);
     expect(items[0].date).toBe('2020-06-01');
+  });
+});
+
+describe('GET /api/days/:date (szczegóły dnia po dacie — integracja API ↔ DB)', () => {
+  it('gość bez sesji → 401', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/days/2020-01-01' });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('niepoprawna data kalendarzowa (2020-02-31) → 400', async () => {
+    const cookie = await signUp();
+    const res = await app.inject({ method: 'GET', url: '/api/days/2020-02-31', headers: { cookie } });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('data z przyszłości → 400 FUTURE_DATE', async () => {
+    const cookie = await signUp();
+    const tomorrow = addDaysIso(localDateInTimeZone(new Date(), 'Europe/Warsaw'), 1);
+    const res = await app.inject({ method: 'GET', url: `/api/days/${tomorrow}`, headers: { cookie } });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('FUTURE_DATE');
+  });
+
+  it('przeszła data bez wpisu → 200 { day: null }', async () => {
+    const cookie = await signUp();
+    const res = await app.inject({ method: 'GET', url: '/api/days/2019-09-09', headers: { cookie } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().day).toBeNull();
+  });
+
+  it('przeszła data z wpisem → 200, pełny dzień z notatkami i celami (nie okrojony)', async () => {
+    const { cookie, userId } = await signUpWithId();
+    await seedDay(userId, '2020-06-01', { mainTitle: 'Historyczny', completed: [true, false, true] });
+    const res = await app.inject({ method: 'GET', url: '/api/days/2020-06-01', headers: { cookie } });
+    expect(res.statusCode).toBe(200);
+    const day = res.json().day;
+    expect(day).not.toBeNull();
+    expect(day.date).toBe('2020-06-01');
+    expect(day.status).toBe('closed');
+    expect(day.eveningNote).toBe('wieczór'); // pełne notatki (w przeciwieństwie do historii)
+    expect(day.goals).toHaveLength(3);
+    expect(day.goals[0]).toHaveProperty('note');
+    expect(day.goals[0]).toHaveProperty('completedNote');
+    expect(day.goals[0].completed).toBe(true);
+  });
+
+  it('dzisiejsza data → 200, dzień „dzisiaj"', async () => {
+    const cookie = await signUp();
+    await createMorning(cookie);
+    const today = localDateInTimeZone(new Date(), 'Europe/Warsaw');
+    const res = await app.inject({ method: 'GET', url: `/api/days/${today}`, headers: { cookie } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().day.status).toBe('evening_pending');
   });
 });

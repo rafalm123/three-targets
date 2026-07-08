@@ -12,7 +12,8 @@ import {
   morningEntrySchema,
 } from '@trzy-cele/shared';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
-import { dateOnlyUtc, userToday } from '../lib/day-boundary';
+import { z } from 'zod';
+import { dateOnlyUtc, localDateInTimeZone, userToday } from '../lib/day-boundary';
 import { checkCanCloseDay, checkDayMutable } from '../lib/day-service';
 import { prisma } from '../lib/prisma';
 import { getAuthSession, requireAuth } from '../lib/require-auth';
@@ -158,6 +159,45 @@ export const dayRoutes: FastifyPluginAsyncZod = async (app) => {
       const last = items.at(-1);
       const nextCursor = hasMore && last ? last.date : null;
       return { items, nextCursor };
+    },
+  );
+
+  // BE-17 — pobranie dnia po dacie (szczegóły historyczne dla FE-10 „klik w dzień z historii").
+  // Read-only, pełny dzień (z notatkami, w przeciwieństwie do okrojonej historii). `date ≤ dziś`.
+  // Walidacja kalendarzowa daty lokalnie (patrz dług techniczny: docelowo wspólny isoDateString).
+  app.get(
+    '/days/:date',
+    {
+      preHandler: requireAuth,
+      schema: {
+        params: z.object({
+          date: z
+            .string()
+            .regex(/^\d{4}-\d{2}-\d{2}$/)
+            .refine((s) => {
+              const d = dateOnlyUtc(s);
+              return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+            }, 'Niepoprawna data kalendarzowa'),
+        }),
+        response: { 200: dayResponseSchema, 400: apiErrorSchema },
+      },
+    },
+    async (request, reply) => {
+      const { user } = getAuthSession(request);
+      const { date } = request.params;
+      const today = localDateInTimeZone(new Date(), user.timezone);
+      if (date > today) {
+        // porównanie leksykograficzne YYYY-MM-DD == kalendarzowe
+        const err: ApiError = {
+          error: { message: 'Nie można pobrać dnia z przyszłości', code: 'FUTURE_DATE' },
+        };
+        return reply.status(400).send(err);
+      }
+      const day = await prisma.day.findUnique({
+        where: { userId_date: { userId: user.id, date: dateOnlyUtc(date) } },
+        include: { goals: { orderBy: { position: 'asc' } } },
+      });
+      return reply.status(200).send({ day: day ? toDayResponse(day) : null });
     },
   );
 
