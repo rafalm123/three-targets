@@ -6,6 +6,7 @@ import { authRoutes } from './routes/auth';
 import { dayRoutes } from './routes/days';
 import { healthRoutes } from './routes/health';
 import { meRoutes } from './routes/me';
+import { statsRoutes } from './routes/stats';
 
 /**
  * Buduje instancję Fastify: podpina provider zod (walidacja wejścia i serializacja
@@ -25,6 +26,7 @@ export function buildServer({ logger = true }: { logger?: boolean } = {}): Fasti
   app.register(authRoutes, { prefix: '/api' });
   app.register(meRoutes, { prefix: '/api' });
   app.register(dayRoutes, { prefix: '/api' });
+  app.register(statsRoutes, { prefix: '/api' });
   app.register(healthRoutes, { prefix: '/api' });
 
   // Statyk SPA (prod) + SPA-aware notFoundHandler.
