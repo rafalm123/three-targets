@@ -1,0 +1,50 @@
+import { describe, expect, it } from 'vitest';
+import { computeStreak } from './streak';
+
+const TODAY = '2026-07-08';
+
+describe('computeStreak', () => {
+  it('brak dni → same zera', () => {
+    expect(computeStreak([], TODAY)).toEqual({ current: 0, longest: 0, totalDays: 0 });
+  });
+
+  it('current: dziś closed + dwa poprzednie → 3', () => {
+    const r = computeStreak(['2026-07-06', '2026-07-07', '2026-07-08'], TODAY);
+    expect(r.current).toBe(3);
+    expect(r.longest).toBe(3);
+    expect(r.totalDays).toBe(3);
+  });
+
+  it('grace dla „dziś": dziś NIE closed, wczoraj i przedwczoraj closed → current 2', () => {
+    const r = computeStreak(['2026-07-06', '2026-07-07'], TODAY);
+    expect(r.current).toBe(2);
+  });
+
+  it('przerwa w przeszłości zrywa current (dziś nie closed, luka wczoraj)', () => {
+    // wczoraj (07-07) brak → seria bieżąca zaczyna się i od razu kończy
+    const r = computeStreak(['2026-07-05', '2026-07-06'], TODAY);
+    expect(r.current).toBe(0);
+  });
+
+  it('longest liczy najdłuższą serię w historii, niezależnie od bieżącej', () => {
+    // seria 4 dni w przeszłości, przerwa, potem 1 dzień; dziś nie closed
+    const r = computeStreak(
+      ['2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04', '2026-06-01'],
+      TODAY,
+    );
+    expect(r.longest).toBe(4);
+    expect(r.totalDays).toBe(5);
+    expect(r.current).toBe(0);
+  });
+
+  it('przeskok miesiąca jest ciągły kalendarzowo (31 sty → 1 lut)', () => {
+    const r = computeStreak(['2026-01-31', '2026-02-01', '2026-02-02'], '2026-02-02');
+    expect(r.current).toBe(3);
+    expect(r.longest).toBe(3);
+  });
+
+  it('current niezależny od kolejności wejścia', () => {
+    const r = computeStreak(['2026-07-08', '2026-07-06', '2026-07-07'], TODAY);
+    expect(r.current).toBe(3);
+  });
+});

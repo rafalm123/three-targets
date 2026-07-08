@@ -27,3 +27,13 @@ export function dateOnlyUtc(localDate: string): Date {
 export function userToday(timeZone: string, now: Date = new Date()): Date {
   return dateOnlyUtc(localDateInTimeZone(now, timeZone));
 }
+
+/**
+ * Przesuwa datę `YYYY-MM-DD` o `delta` dni (może być ujemne), zwraca `YYYY-MM-DD`.
+ * Arytmetyka na północy UTC → odporna na DST (dzień kalendarzowy = stały skok UTC).
+ */
+export function addDaysIso(localDate: string, delta: number): string {
+  const d = dateOnlyUtc(localDate);
+  d.setUTCDate(d.getUTCDate() + delta);
+  return d.toISOString().slice(0, 10);
+}
