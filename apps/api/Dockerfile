@@ -22,7 +22,9 @@ RUN pnpm build
 
 ENV NODE_ENV=production
 EXPOSE 3000
+# Entrypoint wykonywalny (chmod jako root, zanim zejdziemy na usera node).
+RUN chmod +x apps/api/docker-entrypoint.sh
 # Nie root w runtime (hardening); pliki są world-readable, app nie pisze do FS.
 USER node
-# Migracje na prod: `prisma migrate deploy` uruchamiane przy wdrożeniu (FND-6), nie tutaj.
-CMD ["node", "apps/api/dist/index.js"]
+# Start: `prisma migrate deploy` (idempotentne) → serwer. Szczegóły w docker-entrypoint.sh.
+CMD ["/app/apps/api/docker-entrypoint.sh"]
