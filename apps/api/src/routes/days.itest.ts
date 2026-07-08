@@ -310,4 +310,32 @@ describe('PATCH /api/days/today (edycja poranna — integracja API ↔ DB)', () 
     expect(res.statusCode).toBe(409);
     expect(res.json().error.code).toBe('DAY_ALREADY_CLOSED');
   });
+
+  it('replace (nie merge): PATCH bez pól opcjonalnych czyści morningNote i note celów do null', async () => {
+    const cookie = await signUp();
+    // dzień z wypełnionymi notatkami…
+    await app.inject({
+      method: 'POST',
+      url: '/api/days',
+      headers: { cookie, 'content-type': 'application/json' },
+      payload: {
+        main: { title: 'G', note: 'nota głównego' },
+        secondary: [{ title: 'A', note: 'nota A' }, { title: 'B' }],
+        morningNote: 'nota poranna',
+      },
+    });
+    // …edycja BEZ morningNote i BEZ note → pełne zastąpienie zeruje pominięte pola
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/days/today',
+      headers: { cookie, 'content-type': 'application/json' },
+      payload: { main: { title: 'G2' }, secondary: [{ title: 'A2' }, { title: 'B2' }] },
+    });
+    expect(res.statusCode).toBe(200);
+    const day = res.json();
+    expect(day.morningNote).toBeNull();
+    const main = day.goals.find((g: { kind: string }) => g.kind === 'main');
+    expect(main.note).toBeNull();
+    expect(main.title).toBe('G2');
+  });
 });
