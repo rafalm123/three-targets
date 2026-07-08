@@ -40,6 +40,18 @@ async function signUp(): Promise<string> {
 
 const entry = { main: { title: 'Główny' }, secondary: [{ title: 'A' }, { title: 'B' }] };
 
+/** Tworzy wpis poranny i zwraca dzień z 201 (z id celów). */
+async function createMorning(cookie: string) {
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/days',
+    headers: { cookie, 'content-type': 'application/json' },
+    payload: entry,
+  });
+  if (res.statusCode !== 201) throw new Error(`morning failed: ${res.statusCode} ${res.body}`);
+  return res.json() as { id: string; goals: { id: string }[] };
+}
+
 describe('POST /api/days (integracja API ↔ DB)', () => {
   it('gość bez sesji → 401', async () => {
     const res = await app.inject({
@@ -115,5 +127,117 @@ describe('GET /api/days/today (integracja API ↔ DB)', () => {
     expect(day).not.toBeNull();
     expect(day.status).toBe('evening_pending');
     expect(day.goals).toHaveLength(3);
+  });
+});
+
+describe('POST /api/days/today/evening (integracja API ↔ DB)', () => {
+  it('gość bez sesji → 401', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/days/today/evening',
+      headers: { 'content-type': 'application/json' },
+      payload: { goals: [{ id: 'a', completed: true }, { id: 'b', completed: false }, { id: 'c', completed: true }] },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('brak wpisu porannego → 404 NO_DAY_TODAY', async () => {
+    const cookie = await signUp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/days/today/evening',
+      headers: { cookie, 'content-type': 'application/json' },
+      payload: { goals: [{ id: 'a', completed: true }, { id: 'b', completed: false }, { id: 'c', completed: true }] },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error.code).toBe('NO_DAY_TODAY');
+  });
+
+  it('odznaczenie 3 celów → 200, dzień closed z zapisanymi wynikami', async () => {
+    const cookie = await signUp();
+    const day = await createMorning(cookie);
+    const [g1, g2, g3] = day.goals;
+    if (!g1 || !g2 || !g3) throw new Error('oczekiwano 3 celów');
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/days/today/evening',
+      headers: { cookie, 'content-type': 'application/json' },
+      payload: {
+        goals: [
+          { id: g1.id, completed: true, completedNote: 'dowiezione' },
+          { id: g2.id, completed: false },
+          { id: g3.id, completed: true },
+        ],
+        eveningNote: 'dobry dzień',
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const closed = res.json();
+    expect(closed.status).toBe('closed');
+    expect(closed.eveningNote).toBe('dobry dzień');
+    const byId = Object.fromEntries(closed.goals.map((g: { id: string }) => [g.id, g]));
+    expect(byId[g1.id].completed).toBe(true);
+    expect(byId[g1.id].completedNote).toBe('dowiezione');
+    expect(byId[g2.id].completed).toBe(false);
+    expect(byId[g3.id].completed).toBe(true);
+  });
+
+  it('ponowne zamknięcie zamkniętego dnia → 409 DAY_ALREADY_CLOSED', async () => {
+    const cookie = await signUp();
+    const day = await createMorning(cookie);
+    const marks = day.goals.map((g) => ({ id: g.id, completed: true }));
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/days/today/evening',
+      headers: { cookie, 'content-type': 'application/json' },
+      payload: { goals: marks },
+    });
+    expect(first.statusCode).toBe(200);
+    const again = await app.inject({
+      method: 'POST',
+      url: '/api/days/today/evening',
+      headers: { cookie, 'content-type': 'application/json' },
+      payload: { goals: marks },
+    });
+    expect(again.statusCode).toBe(409);
+    expect(again.json().error.code).toBe('DAY_ALREADY_CLOSED');
+  });
+
+  it('oznaczenia nie pasujące do celów dnia → 400 GOAL_MISMATCH', async () => {
+    const cookie = await signUp();
+    const day = await createMorning(cookie);
+    const [g1, g2] = day.goals;
+    if (!g1 || !g2) throw new Error('oczekiwano celów');
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/days/today/evening',
+      headers: { cookie, 'content-type': 'application/json' },
+      payload: {
+        goals: [
+          { id: g1.id, completed: true },
+          { id: g2.id, completed: true },
+          { id: 'obce-id', completed: true },
+        ],
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('GOAL_MISMATCH');
+  });
+
+  it('cross-user: id celów innego usera → 400, własny dzień zostaje otwarty', async () => {
+    const cookieA = await signUp();
+    const dayA = await createMorning(cookieA);
+    const cookieB = await signUp();
+    await createMorning(cookieB); // B ma własny dzień (evening_pending) — więc nie 404, tylko 400
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/days/today/evening',
+      headers: { cookie: cookieB, 'content-type': 'application/json' },
+      payload: { goals: dayA.goals.map((g) => ({ id: g.id, completed: true })) },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('GOAL_MISMATCH');
+    const check = await app.inject({ method: 'GET', url: '/api/days/today', headers: { cookie: cookieB } });
+    expect(check.json().day.status).toBe('evening_pending');
   });
 });

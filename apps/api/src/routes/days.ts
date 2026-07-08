@@ -5,14 +5,19 @@ import {
   type Day,
   dayResponseSchema,
   daySchema,
+  eveningEntrySchema,
   morningEntrySchema,
 } from '@trzy-cele/shared';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { userToday } from '../lib/day-boundary';
+import { checkCanCloseDay } from '../lib/day-service';
 import { prisma } from '../lib/prisma';
 import { getAuthSession, requireAuth } from '../lib/require-auth';
 
 type DayWithGoals = Prisma.DayGetPayload<{ include: { goals: true } }>;
+
+/** Sygnał wewnętrzny: dzień zamknięto równolegle (wyścig) → rollback transakcji, mapowany na 409. */
+class DayAlreadyClosedError extends Error {}
 
 function toDayResponse(day: DayWithGoals): Day {
   return {
@@ -108,6 +113,76 @@ export const dayRoutes: FastifyPluginAsyncZod = async (app) => {
         include: { goals: { orderBy: { position: 'asc' } } },
       });
       return { day: day ? toDayResponse(day) : null };
+    },
+  );
+
+  // BE-12 — wieczorne odznaczenie: oznacza każdy z 3 celów (dowieziony/nie + opcjonalna notatka),
+  // zapisuje notatkę wieczorną i przełącza dzień evening_pending → closed. Reguły przejścia
+  // (istnienie / niemutowalność closed / spójność celów) w checkCanCloseDay. Zapis atomowy (transakcja).
+  app.post(
+    '/days/today/evening',
+    {
+      preHandler: requireAuth,
+      schema: {
+        body: eveningEntrySchema,
+        response: {
+          200: daySchema,
+          400: apiErrorSchema,
+          404: apiErrorSchema,
+          409: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { user } = getAuthSession(request);
+      const body = request.body;
+      const date = userToday(user.timezone);
+
+      const day = await prisma.day.findUnique({
+        where: { userId_date: { userId: user.id, date } },
+        include: { goals: true },
+      });
+
+      const guard = checkCanCloseDay(day, body.goals.map((g) => g.id));
+      if (!guard.ok) {
+        const err: ApiError = { error: { message: guard.message, code: guard.code } };
+        return reply.status(guard.status).send(err);
+      }
+
+      // guard.ok: dzień istnieje, evening_pending, a body.goals to dokładnie cele tego dnia.
+      // Niemutowalność `closed` egzekwowana ATOMOWO: warunkowy updateMany (status='evening_pending')
+      // jako pierwszy krok transakcji — przy wyścigu (double-submit) przegrany trafia count===0 →
+      // rollback → 409. Guard powyżej to tylko szybka ścieżka dla przypadku sekwencyjnego.
+      try {
+        const updated = await prisma.$transaction(async (tx) => {
+          const gate = await tx.day.updateMany({
+            where: { userId: user.id, date, status: 'evening_pending' },
+            data: { eveningNote: body.eveningNote ?? null, status: 'closed' },
+          });
+          if (gate.count === 0) throw new DayAlreadyClosedError();
+          for (const mark of body.goals) {
+            await tx.goal.update({
+              where: { id: mark.id },
+              data: { completed: mark.completed, completedNote: mark.completedNote ?? null },
+            });
+          }
+          const full = await tx.day.findUnique({
+            where: { userId_date: { userId: user.id, date } },
+            include: { goals: { orderBy: { position: 'asc' } } },
+          });
+          if (!full) throw new Error('Dzień zniknął w trakcie zamykania'); // nieosiągalne
+          return full;
+        });
+        return await reply.status(200).send(toDayResponse(updated));
+      } catch (err) {
+        if (err instanceof DayAlreadyClosedError) {
+          const conflict: ApiError = {
+            error: { message: 'Dzień jest już zamknięty', code: 'DAY_ALREADY_CLOSED' },
+          };
+          return await reply.status(409).send(conflict);
+        }
+        throw err;
+      }
     },
   );
 };
