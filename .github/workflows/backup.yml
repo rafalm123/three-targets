@@ -36,8 +36,9 @@ jobs:
           fi
           STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
           echo "STAMP=$STAMP" >> "$GITHUB_ENV"
-          # Obraz postgres:17 == wersja bazy Neona → zgodność pg_dump/pg_restore.
-          docker run --rm postgres:17 \
+          # Obraz postgres:18 == major wersji bazy Neona (prod = PG18) → zgodność pg_dump/pg_restore.
+          # pg_dump ODMAWIA zrzutu z serwera o wyższym majorze niż klient, więc obraz musi ≥ wersja Neona.
+          docker run --rm postgres:18 \
             pg_dump --no-owner --no-privileges --format=custom "$BACKUP_DATABASE_URL" \
             > "backup-$STAMP.dump"
           ls -lh "backup-$STAMP.dump"
