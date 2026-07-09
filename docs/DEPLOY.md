@@ -45,9 +45,13 @@ Weryfikujemy to, czego CI nie sprawdza: cold start, Secure/same-origin cookies w
 
 ## Backup i restore (FND-7)
 
-Workflow [`.github/workflows/backup.yml`](../.github/workflows/backup.yml): `pg_dump` (format custom, `postgres:17`)
+Workflow [`.github/workflows/backup.yml`](../.github/workflows/backup.yml): `pg_dump` (format custom, `postgres:18`)
 codziennie o 02:00 UTC + ręcznie (*Actions → DB Backup → Run workflow*). Dump ląduje jako **artifact**
 (retencja 30 dni, zero kosztu). Kolejność wg @sa: **po** deployu, **przed** pierwszym realnym wpisem.
+
+> **Wersja Postgresa:** Neon (prod) to **PG18**, więc dump/restore robimy obrazem `postgres:18`. `pg_dump`
+> odmawia zrzutu z serwera o wyższym majorze niż klient — obraz musi być ≥ wersja serwera. (Lokalny
+> docker-compose to nadal PG17 dla dev — to osobna baza, nie dotyczy backupu Neona.)
 
 ### Krok właściciela (jednorazowo)
 
@@ -59,15 +63,21 @@ Potem odpal workflow ręcznie raz, by potwierdzić, że dump się tworzy.
 
 ### „Done" = testowy restore (nie sam cron!)
 
-Pobierz artifact z uruchomienia workflow i odtwórz do **pustej** bazy (np. lokalny Postgres 17 albo
-świeża baza Neon), weryfikując że dane wracają:
+Pobierz artifact z uruchomienia workflow i odtwórz do **pustej** bazy **PG18** (major ≥ Neon),
+weryfikując że dane wracają. Najprościej throwaway kontener `postgres:18`:
 
 ```bash
-# lokalny Postgres 17 (docker-compose już go daje):
-createdb -h localhost -U <user> restore_test    # lub: psql ... -c 'CREATE DATABASE restore_test;'
-pg_restore --clean --if-exists --no-owner --no-privileges \
-  -d "postgresql://<user>:<pass>@localhost:5432/restore_test" backup-<STAMP>.dump
-psql "...restore_test" -c '\dt'                  # tabele Better Auth + days/goals obecne?
+# 1. świeża, pusta baza PG18 (throwaway):
+docker run -d --name restore-test -e POSTGRES_PASSWORD=test -p 55432:5432 postgres:18
+sleep 5
+# 2. restore dumpa (klient postgres:18) do niej:
+docker run --rm -v "$PWD:/dump" postgres:18 \
+  pg_restore --clean --if-exists --no-owner --no-privileges \
+  -d "postgresql://postgres:test@host.docker.internal:55432/postgres" /dump/backup-<STAMP>.dump
+# 3. sprawdź, że tabele wróciły (Better Auth + days/goals):
+docker run --rm postgres:18 \
+  psql "postgresql://postgres:test@host.docker.internal:55432/postgres" -c '\dt'
+docker rm -f restore-test   # sprzątanie
 ```
 
 Restore uznajemy za zaliczony, gdy tabele i wiersze są na miejscu. Dopiero wtedy FND-7 jest „done".
