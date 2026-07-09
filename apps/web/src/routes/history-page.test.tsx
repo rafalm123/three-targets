@@ -1,8 +1,9 @@
 import type { Day, DaySummary } from '@trzy-cele/shared';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { HistoryDayPage } from './history-day-page';
 import { HistoryPage } from './history-page';
 
 const getHistory = vi.fn();
@@ -35,10 +36,23 @@ function closedDay(date: string): Day {
   };
 }
 
+/** Sam widok listy pod `/historia` (do testów listy/paginacji). */
 function renderPage(): void {
   render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={['/historia']}>
       <HistoryPage />
+    </MemoryRouter>,
+  );
+}
+
+/** Obie trasy historii — do testu nawigacji lista → szczegół. */
+function renderRouted(initial = '/historia'): void {
+  render(
+    <MemoryRouter initialEntries={[initial]}>
+      <Routes>
+        <Route path="/historia" element={<HistoryPage />} />
+        <Route path="/historia/:date" element={<HistoryDayPage />} />
+      </Routes>
     </MemoryRouter>,
   );
 }
@@ -78,23 +92,32 @@ describe('HistoryPage (FE-10)', () => {
     expect(screen.queryByRole('button', { name: 'Pokaż starsze' })).toBeNull();
   });
 
-  it('klik w dzień → szczegół read-only z notatkami (getDayByDate)', async () => {
+  it('wiersz to link do /historia/:date (deep-link)', async () => {
+    getHistory.mockResolvedValue({ items: [summary('2026-07-08', 'Dzień A')], nextCursor: null });
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Dzień A')).toBeTruthy());
+    const link = screen.getByRole('link', { name: /Dzień A/ });
+    expect(link.getAttribute('href')).toBe('/historia/2026-07-08');
+  });
+
+  it('nawigacja: klik w wiersz → trasa /historia/:date renderuje szczegół z notatkami', async () => {
     getHistory.mockResolvedValue({ items: [summary('2026-07-08', 'Dzień A')], nextCursor: null });
     getDayByDate.mockResolvedValue({ day: closedDay('2026-07-08') });
     const user = userEvent.setup();
-    renderPage();
+    renderRouted();
     await waitFor(() => expect(screen.getByText('Dzień A')).toBeTruthy());
 
-    await user.click(screen.getByText('Dzień A'));
+    await user.click(screen.getByRole('link', { name: /Dzień A/ }));
 
+    // Trasa szczegółu pobiera dzień po dacie z param i pokazuje notatki (lista ich nie ma).
     await waitFor(() => expect(screen.getByText('Główny szczegół')).toBeTruthy());
     expect(getDayByDate).toHaveBeenCalledWith('2026-07-08');
-    // Szczegół pokazuje notatki (historia listowa ich nie ma).
     expect(screen.getByText('poranna')).toBeTruthy();
     expect(screen.getByText('wieczorna')).toBeTruthy();
 
-    // Powrót do listy.
-    await user.click(screen.getByRole('button', { name: '← Wróć do historii' }));
+    // Powrót linkiem do listy.
+    getHistory.mockResolvedValue({ items: [summary('2026-07-08', 'Dzień A')], nextCursor: null });
+    await user.click(screen.getByRole('link', { name: '← Wróć do historii' }));
     await waitFor(() => expect(screen.getByText('Dzień A')).toBeTruthy());
   });
 });
