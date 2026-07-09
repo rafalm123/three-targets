@@ -1,18 +1,22 @@
-import type { Day, DaySummary } from '@trzy-cele/shared';
+import type { DaySummary } from '@trzy-cele/shared';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { AppShell } from '../components/app-shell';
-import { DayReadonlyView } from '../components/day-readonly';
 import { EmptyState, ErrorState, LoadingState } from '../components/states';
-import { getDayByDate, getHistory } from '../lib/api';
+import { getHistory } from '../lib/api';
+import { flagClass, formatDate, goalsAriaLabel } from './history-format';
 
 /**
  * Widok „Historia / dziennik" (FE-10). Lista przeszłych dni od najnowszych (`GET /days/history`,
  * bez „dziś", bez pełnych notatek — tylko `DaySummary`). Stronicowanie **keyset** przez `nextCursor`
  * z przyciskiem „Pokaż starsze" (proste i testowalne; bez infinite scroll).
  *
- * Klik w dzień → szczegół read-only (`GET /days/:date` — pełny dzień z notatkami). Szczegół to
- * lokalny stan (nie osobna trasa) — dla prywatnej apki 1-user deep-link historii to nadmiar;
- * decyzja odnotowana w PR.
+ * Klik w dzień → nawigacja do dedykowanej trasy `/historia/:date` (FE-13) — szczegół jest osobnym
+ * widokiem (`HistoryDayPage`), więc deep-link/refresh/back-button działają natywnie.
+ *
+ * TRADE-OFF (MVP): powrót z `/historia/:date` remontuje ten komponent → lista i paginacja
+ * resetują się do pierwszej strony. Świadomie akceptowane — zachowanie stanu listy między
+ * nawigacjami (cache/context) jest poza zakresem FE-13.
  */
 
 /** Stan listy historii. */
@@ -25,7 +29,6 @@ export function HistoryPage(): ReactNode {
   const [list, setList] = useState<ListState>({ kind: 'loading' });
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const loadFirst = useCallback(async (): Promise<void> => {
     setList({ kind: 'loading' });
@@ -59,15 +62,6 @@ export function HistoryPage(): ReactNode {
     }
   }
 
-  // Szczegół wybranego dnia — nakładka read-only nad listą.
-  if (selectedDate) {
-    return (
-      <AppShell showNav>
-        <DayDetail date={selectedDate} onBack={() => setSelectedDate(null)} />
-      </AppShell>
-    );
-  }
-
   return (
     <AppShell showNav>
       <h2 className="page-title">Historia</h2>
@@ -95,7 +89,7 @@ export function HistoryPage(): ReactNode {
           <ul className="history-list">
             {list.items.map((item) => (
               <li key={item.date}>
-                <HistoryRow item={item} onOpen={() => setSelectedDate(item.date)} />
+                <HistoryRow item={item} />
               </li>
             ))}
           </ul>
@@ -125,11 +119,10 @@ export function HistoryPage(): ReactNode {
   );
 }
 
-/** Wiersz listy: data, status, tytuł głównego + flagi dowiezienia 3 celów. Klik → szczegół. */
-function HistoryRow({ item, onOpen }: { item: DaySummary; onOpen: () => void }): ReactNode {
+/** Wiersz listy: data, status, tytuł głównego + flagi 3 celów. Link → szczegół `/historia/:date`. */
+function HistoryRow({ item }: { item: DaySummary }): ReactNode {
   return (
-    <button type="button" className="history-row" onClick={onOpen}>
-      {/* span (nie div) — element blokowy w <button> byłby niewalidnym HTML (CR NIT-3). */}
+    <Link to={`/historia/${item.date}`} className="history-row">
       <span className="history-row-head">
         <time className="history-date" dateTime={item.date}>
           {formatDate(item.date)}
@@ -141,86 +134,13 @@ function HistoryRow({ item, onOpen }: { item: DaySummary; onOpen: () => void }):
       <span className="history-main-title">{item.mainTitle}</span>
       {/* role="img" + aria-label → czytnik odczyta zagregowane „Dowiezione X z 3" zamiast
           symboli ✓/✗/– (te są aria-hidden). (CR NIT-4) */}
-      <span
-        className="history-flags"
-        role="img"
-        aria-label={goalsAriaLabel(item.goalsCompleted)}
-      >
+      <span className="history-flags" role="img" aria-label={goalsAriaLabel(item.goalsCompleted)}>
         {item.goalsCompleted.map((c, i) => (
           <span key={i} className={`history-flag ${flagClass(c)}`} aria-hidden="true">
             {c === null ? '–' : c ? '✓' : '✗'}
           </span>
         ))}
       </span>
-    </button>
+    </Link>
   );
-}
-
-/** Szczegół dnia po dacie — pełny read-only (z notatkami). */
-function DayDetail({ date, onBack }: { date: string; onBack: () => void }): ReactNode {
-  const [state, setState] = useState<
-    { kind: 'loading' } | { kind: 'error' } | { kind: 'ready'; day: Day | null }
-  >({ kind: 'loading' });
-
-  const load = useCallback(async (): Promise<void> => {
-    setState({ kind: 'loading' });
-    try {
-      const { day } = await getDayByDate(date);
-      setState({ kind: 'ready', day });
-    } catch {
-      setState({ kind: 'error' });
-    }
-  }, [date]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  return (
-    <section className="day-view" aria-label={`Dzień ${date}`}>
-      <button type="button" className="button button-secondary back-button" onClick={onBack}>
-        ← Wróć do historii
-      </button>
-
-      <header className="day-view-header">
-        <h2>{formatDate(date)}</h2>
-      </header>
-
-      {state.kind === 'loading' ? <LoadingState label="Ładowanie dnia…" /> : null}
-
-      {state.kind === 'error' ? (
-        <ErrorState
-          message="Nie udało się wczytać tego dnia."
-          onRetry={() => {
-            void load();
-          }}
-        />
-      ) : null}
-
-      {state.kind === 'ready' && state.day === null ? (
-        <EmptyState title="Brak wpisu" message="Na ten dzień nie ma zapisanego wpisu." />
-      ) : null}
-
-      {state.kind === 'ready' && state.day !== null ? <DayReadonlyView day={state.day} /> : null}
-    </section>
-  );
-}
-
-/** `YYYY-MM-DD` → czytelna data PL. Parsujemy jako lokalną (bez przesunięcia strefy). */
-function formatDate(iso: string): string {
-  const [y, m, d] = iso.split('-').map(Number);
-  if (!y || !m || !d) return iso;
-  const date = new Date(y, m - 1, d);
-  return date.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' });
-}
-
-function flagClass(c: boolean | null): string {
-  if (c === null) return 'history-flag-none';
-  return c ? 'history-flag-done' : 'history-flag-missed';
-}
-
-function goalsAriaLabel(flags: (boolean | null)[]): string {
-  const done = flags.filter((f) => f === true).length;
-  const total = flags.length;
-  return `Dowiezione ${done} z ${total} celów`;
 }

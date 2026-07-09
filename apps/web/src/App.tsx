@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { HistoryDayPage } from './routes/history-day-page';
 import { HistoryPage } from './routes/history-page';
 import { LoginPage } from './routes/login-page';
 import { RegisterPage } from './routes/register-page';
@@ -11,8 +12,9 @@ import { ProtectedRoute, PublicOnlyRoute } from './routes/guards';
  *
  * Struktura tras:
  *  - `/login`, `/register` — tylko dla gościa (PublicOnlyRoute); zalogowany → `/`.
- *  - `/` (Dziś, HUB) i `/historia` — chronione (ProtectedRoute); gość → `/login`. Odświeżenie
- *    nie wylogowuje (sesja w ciasteczku HttpOnly, `useSession` re-hydratuje stan).
+ *  - `/` (Dziś, HUB), `/historia` (lista) i `/historia/:date` (szczegół dnia, FE-13) — chronione
+ *    (ProtectedRoute); gość → `/login`. Odświeżenie nie wylogowuje (sesja w ciasteczku HttpOnly,
+ *    `useSession` re-hydratuje stan); szczegół dnia odtwarza się z param trasy (refresh/deep-link).
  *  - `*` — nieznana ścieżka → `/` (guard i tak rozstrzygnie login vs apka).
  *
  * Konwencja: każdy ekran sam owija się w `AppShell` (spójnie w całej apce), routing nie
@@ -30,6 +32,7 @@ export function App(): ReactNode {
         <Route element={<ProtectedRoute />}>
           <Route path="/" element={<TodayPage />} />
           <Route path="/historia" element={<HistoryPage />} />
+          <Route path="/historia/:date" element={<HistoryDayPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
