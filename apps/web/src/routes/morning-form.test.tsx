@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiRequestError } from '../lib/api';
@@ -77,6 +77,22 @@ describe('MorningForm (FE-7)', () => {
 
     await waitFor(() => expect(onDayAlreadyExists).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('notatka >2000 znaków → widoczny komunikat błędu, brak wywołania API', async () => {
+    const user = userEvent.setup();
+    renderForm();
+    await fillValid(user);
+    // maxLength blokuje wpisanie z klawiatury — wymuszamy zbyt długą wartość programowo
+    // (symulacja wklejenia), by wywołać issue zod `.max(2000)` niezmapowany na żadne pole.
+    fireEvent.change(screen.getByLabelText('Notatka poranna (opcjonalnie)'), {
+      target: { value: 'x'.repeat(2001) },
+    });
+    await user.click(screen.getByRole('button', { name: 'Zapisz poranek' }));
+
+    // Fallback: przy braku mapowania na pole użytkownik dostaje komunikat w form-error (role=alert).
+    await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
+    expect(createDay).not.toHaveBeenCalled();
   });
 
   it('inny błąd API → komunikat w form-error, przycisk znów aktywny', async () => {

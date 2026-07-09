@@ -90,6 +90,12 @@ export function MorningForm({
       }
       if (sec[0] || sec[1]) errors.secondaryTitle = sec;
       setFieldErrors(errors);
+      // Obrona przed cichym fiaskiem: issue na polach bez własnego mapowania (np. za długa
+      // `note`/`morningNote`, max 2000) nie trafi do żadnego pola. Gdy NIC się nie zmapowało,
+      // pokazujemy pierwszy komunikat w form-error — użytkownik ZAWSZE dostaje feedback.
+      if (!errors.mainTitle && !errors.secondaryTitle) {
+        setFormError(parsed.error.issues[0]?.message ?? GENERIC_API_ERROR);
+      }
       return;
     }
     setFieldErrors({});
@@ -143,6 +149,7 @@ export function MorningForm({
           <label htmlFor="main-note">Notatka (opcjonalnie)</label>
           <textarea
             id="main-note"
+            maxLength={2000}
             value={state.mainNote}
             onChange={(e) => set('mainNote', e.target.value)}
           />
@@ -176,6 +183,7 @@ export function MorningForm({
               <label htmlFor={`sec-${i}-note`}>Notatka (opcjonalnie)</label>
               <textarea
                 id={`sec-${i}-note`}
+                maxLength={2000}
                 value={state[noteKey]}
                 onChange={(e) => set(noteKey, e.target.value)}
               />
@@ -188,6 +196,7 @@ export function MorningForm({
         <label htmlFor="morning-note">Notatka poranna (opcjonalnie)</label>
         <textarea
           id="morning-note"
+          maxLength={2000}
           value={state.morningNote}
           onChange={(e) => set('morningNote', e.target.value)}
         />

@@ -111,7 +111,9 @@ function DayView({ day, userName }: { day: Day; userName?: string }): ReactNode 
     <section className="day-view" aria-label="Dzisiejszy dzień">
       <header className="day-view-header">
         <h2>Dziś{userName ? `, ${userName}` : ''}</h2>
-        <span className={`day-badge day-badge-${day.status}`}>
+        {/* Modyfikator dokładamy tylko dla `closed` (jedyny stan zmieniający wygląd) — brak
+            martwego selektora `.day-badge-evening_pending` bez reguły. */}
+        <span className={`day-badge${isClosed ? ' day-badge-closed' : ''}`}>
           {isClosed ? 'Dzień zamknięty' : 'Wieczór do oznaczenia'}
         </span>
       </header>

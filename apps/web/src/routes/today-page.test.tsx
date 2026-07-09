@@ -1,5 +1,6 @@
 import type { Day } from '@trzy-cele/shared';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TodayPage } from './today-page';
@@ -14,9 +15,29 @@ vi.mock('../lib/auth-client', () => ({
   useSession: () => ({ data: { user: { name: 'Jan', email: 'jan@example.com' } } }),
 }));
 
-// MorningForm ma własny test — tu podmieniamy na sondę, by wykryć stan „wypełnij rano".
+// MorningForm ma własny test — tu podmieniamy na sondę: pokazuje marker „wypełnij rano" oraz
+// przycisk wywołujący `onCreated` utworzonym dniem (do testu przejścia stanu bez drugiego fetcha).
+const CREATED_DAY: Day = {
+  id: 'd-created',
+  date: '2026-07-09',
+  status: 'evening_pending',
+  morningNote: null,
+  eveningNote: null,
+  goals: [
+    { id: 'gc', kind: 'main', position: 0, title: 'Cel z formularza', note: null, completed: null, completedNote: null },
+    { id: 'gc1', kind: 'secondary', position: 1, title: 'P1', note: null, completed: null, completedNote: null },
+    { id: 'gc2', kind: 'secondary', position: 2, title: 'P2', note: null, completed: null, completedNote: null },
+  ],
+};
 vi.mock('./morning-form', () => ({
-  MorningForm: () => <div>MORNING_FORM</div>,
+  MorningForm: ({ onCreated }: { onCreated: (day: Day) => void }) => (
+    <div>
+      MORNING_FORM
+      <button type="button" onClick={() => onCreated(CREATED_DAY)}>
+        SIMULATE_CREATE
+      </button>
+    </div>
+  ),
 }));
 
 function pendingDay(): Day {
@@ -84,10 +105,33 @@ describe('TodayPage (HUB)', () => {
     expect(screen.queryByRole('button', { name: 'Oznacz wieczór' })).toBeNull();
   });
 
-  it('błąd pobrania → ErrorState z akcją ponowienia', async () => {
-    getToday.mockRejectedValue(new Error('boom'));
+  it('onCreated po formularzu → pokazuje cele dnia BEZ drugiego fetcha', async () => {
+    getToday.mockResolvedValue({ day: null });
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => expect(screen.getByText('MORNING_FORM')).toBeTruthy());
+    expect(getToday).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('button', { name: 'SIMULATE_CREATE' }));
+
+    // Hub przechodzi na widok dnia z danych zwróconych przez onCreated — bez ponownego GET.
+    await waitFor(() => expect(screen.getByText('Cel z formularza')).toBeTruthy());
+    expect(screen.queryByText('MORNING_FORM')).toBeNull();
+    expect(getToday).toHaveBeenCalledTimes(1);
+  });
+
+  it('błąd pobrania → ErrorState; retry faktycznie refetchuje', async () => {
+    getToday.mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce({ day: pendingDay() });
+    const user = userEvent.setup();
     renderPage();
     await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
-    expect(screen.getByRole('button', { name: 'Spróbuj ponownie' })).toBeTruthy();
+    const retry = screen.getByRole('button', { name: 'Spróbuj ponownie' });
+    expect(getToday).toHaveBeenCalledTimes(1);
+
+    await user.click(retry);
+
+    // Ponowienie robi drugi GET i po sukcesie pokazuje dzień.
+    await waitFor(() => expect(screen.getByText('Główny cel')).toBeTruthy());
+    expect(getToday).toHaveBeenCalledTimes(2);
   });
 });

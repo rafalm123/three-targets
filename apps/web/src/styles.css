@@ -18,6 +18,8 @@
   --color-primary-hover: #1d4ed8;
   --color-error: #dc2626;
   --color-error-bg: #fef2f2;
+  --color-success: #166534;
+  --color-success-bg: #dcfce7;
 
   --radius: 8px;
   --font-body: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -307,8 +309,8 @@ a {
 }
 
 .goal-mark-done {
-  color: #166534;
-  background: #dcfce7;
+  color: var(--color-success);
+  background: var(--color-success-bg);
 }
 
 .goal-mark-missed {
