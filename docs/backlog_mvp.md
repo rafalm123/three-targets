@@ -14,8 +14,8 @@
 
 - **Fundament:** FND-1…5b ✅ · **FND-6 deploy** i **FND-7 backup** — skonfigurowane w repo, uruchomienie czeka na właściciela (Render + sekret Neona, `DEPLOY.md`).
 - **Backend Fazy 1: KOMPLETNY** ✅ — BE-3…17 (auth, dzień/cele, wpis poranny, edycja, wieczór, pobranie dnia + po dacie, historia, streak, granica doby). Unit 35 / integracja 35, na `main`.
-- **Frontend:** fundament **FE-1…5 ✅** (auth UI, trasy, guardy, layout, klient auth — na `main`). **DO ZROBIENIA: FE-6…12** (widoki dziennika) — to jedyny brakujący kawałek funkcji MVP.
-- **Następny agent (FE):** czyta `PROGRESS.md` → sekcja „Co zostało" + „Konwencje i pułapki".
+- **Frontend:** FE-1…5 ✅ (auth) + **FE-6…12 ✅** (dziennik: HUB dnia, poranek, edycja, wieczór, historia, streak, polish — na `main`, PR #20/21/22). Pełny rytuał rano→wieczór→historia→streak klikalny E2E. **W toku: FE-13** (szczegół historii jako trasa). Odłożone drobiazgi w „Dług techniczny".
+- **Handoff/kontekst:** `PROGRESS.md` (aktualizowany wraz z postępem FE).
 
 ---
 
@@ -88,6 +88,7 @@ wieczorem oznaczyć co dowiózł → przeglądać historię poprzednich dni → 
 | FE-10 | Widok historii / dziennika | Lista przeszłych dni + podgląd szczegółów dnia. → po BE-14 |
 | FE-11 | Licznik dni | Widoczny wskaźnik licznika/serii. → po BE-15 |
 | FE-12 | Dopracowanie stanów UI | Ładowanie, pusto, błąd, walidacja — spójne w całej aplikacji. |
+| FE-13 | Historia — szczegół dnia jako trasa | Szczegół dnia z `/historia` na dedykowaną trasę `/historia/:date` (`useParams`, back-button, refresh-safe). Rekomendacja @sa: trasa jest tu prostsza i poprawniejsza niż stan lokalny; zła/przyszła data → stan błędu z powrotem. |
 
 ---
 
@@ -97,6 +98,8 @@ wieczorem oznaczyć co dowiózł → przeglądać historię poprzednich dni → 
 - **BE-8 / Dockerfile:** generator Prisma 6 pisze klienta do `node_modules` → `prisma generate` musi odpalić się w obrazie **po** instalacji zależności (inaczej brak klienta w runtime).
 - **Walidacja kalendarzowa dat w kontrakcie** (z review BE-14) — regex `^\d{4}-\d{2}-\d{2}$` przepuszcza daty niepoprawne kalendarzowo (`2020-02-31` → V8 rolluje do `2020-03-02`; `2020-99-99` → Invalid Date). Dziś bezpieczne (kursor `nextCursor` generowany serwerowo; Invalid Date degraduje do „brak kursora"), ale przekrojowo warto wprowadzić wspólny `isoDateString` (`z.string().regex(...).refine(kalendarzowo-poprawna)`) i użyć w `daySchema`/`daySummarySchema`/`dayHistoryQuerySchema.before`, by zwracać uczciwe 400 zamiast cichej korekty.
 - **Prettier nie gejtowany w CI** — job `quality` uruchamia `lint` (eslint) + typecheck/test/build, ale nie `format:check`. Nazbierał się dryf formatowania w kilku plikach `.ts`. Do zrobienia osobno: jednorazowy `pnpm format` + dodanie `format:check` do CI (osobny krok), by dryf nie wracał. Świadomie poza PR-em FND-6 (unikamy mieszania churnu formatowania z konfiguracją deployu).
+- **Kody błędów API jako `z.enum`/stałe w shared** (z review FE Plaster 2) — kody (`DAY_ALREADY_EXISTS`, `DAY_ALREADY_CLOSED`, `GOAL_MISMATCH`, `NO_DAY_TODAY`, `FUTURE_DATE`, `VALIDATION_ERROR`) żyją dziś jako literały stringowe rozproszone po BE i FE (`apiErrorSchema.code` = `z.string().optional()`). Wprowadzić wspólny słownik kodów w `packages/shared/src/error.ts` (enum/const) i użyć po obu stronach → exhaustive-check i brak literówek. Zmiana kontraktu = osobny task.
+- **FE: powrót fokusu dla błędów spoza tytułów** (z review FE Plaster 3, NIT-5) — po nieudanej walidacji formularza fokus wraca na pierwsze błędne pole tylko dla tytułów celów; błąd na notatce (`max 2000`) pokazuje `formError` bez przeniesienia fokusu. Dopieścić przy okazji dotykania formularzy.
 - **Edge: przesunięcie strefy czasowej wstecz** (obserwacja z review BE-14, dla @sa) — jeśli user zmieni `timezone` na wcześniejszą, dzień o dacie „przyszłej" względem nowego „dziś" znika i z historii (`date < dziś`), i z `GET /days/today`. Przekrojowy edge produktu (dotyczy BE-13 i BE-14). Do decyzji @sa jak traktować (MVP: 1 user, ryzyko marginalne).
 
 ## Świadomie POZA zakresem / zaakceptowane ryzyko
