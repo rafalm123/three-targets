@@ -69,6 +69,41 @@ a {
   padding: var(--space-4) var(--space-2);
 }
 
+/* --- Nawigacja (FE-6) --- */
+.app-nav {
+  display: flex;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.app-nav-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 var(--space-2);
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: var(--color-muted);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+}
+
+.app-nav-link:hover {
+  color: var(--color-text);
+}
+
+.app-nav-link.active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+}
+
+.app-nav-link:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
 /* --- Formularze --- */
 .form {
   display: flex;
@@ -104,9 +139,38 @@ a {
   min-height: 44px;
 }
 
-.field input:focus-visible {
+.field textarea {
+  padding: 0.625rem 0.75rem;
+  font-size: 1rem;
+  font-family: inherit;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  min-height: 60px;
+  resize: vertical;
+}
+
+.field input:focus-visible,
+.field textarea:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 1px;
+}
+
+.goal-fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.goal-fieldset legend {
+  padding: 0 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-muted);
 }
 
 .field-error {
@@ -158,6 +222,125 @@ a {
   font-size: 0.875rem;
   color: var(--color-muted);
   text-align: center;
+}
+
+/* --- Widok dnia (HUB, FE-9) --- */
+.day-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.day-view-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+}
+
+.day-view-header h2 {
+  margin: 0;
+}
+
+.day-badge {
+  padding: 0.25rem 0.625rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  color: var(--color-muted);
+}
+
+.day-badge-closed {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.goal-card {
+  padding: var(--space-2);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.goal-card-primary {
+  border-left: 4px solid var(--color-primary);
+}
+
+.goal-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+}
+
+.goal-kind {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-muted);
+}
+
+.goal-title {
+  margin: 0.25rem 0 0;
+  font-size: 1.0625rem;
+}
+
+.goal-note {
+  margin: 0.5rem 0 0;
+  font-size: 0.9375rem;
+  color: var(--color-muted);
+  white-space: pre-wrap;
+}
+
+.goal-note-completed {
+  font-style: italic;
+}
+
+.goal-mark {
+  padding: 0.125rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 999px;
+}
+
+.goal-mark-done {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.goal-mark-missed {
+  color: var(--color-error);
+  background: var(--color-error-bg);
+}
+
+.day-note {
+  padding: var(--space-2);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.day-note-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-muted);
+}
+
+.day-note p {
+  margin: 0.5rem 0 0;
+  white-space: pre-wrap;
+}
+
+.day-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
 }
 
 /* --- Globalne stany --- */
