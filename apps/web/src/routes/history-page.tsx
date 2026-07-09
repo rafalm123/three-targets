@@ -129,16 +129,23 @@ export function HistoryPage(): ReactNode {
 function HistoryRow({ item, onOpen }: { item: DaySummary; onOpen: () => void }): ReactNode {
   return (
     <button type="button" className="history-row" onClick={onOpen}>
-      <div className="history-row-head">
+      {/* span (nie div) — element blokowy w <button> byłby niewalidnym HTML (CR NIT-3). */}
+      <span className="history-row-head">
         <time className="history-date" dateTime={item.date}>
           {formatDate(item.date)}
         </time>
         <span className={`day-badge${item.status === 'closed' ? ' day-badge-closed' : ''}`}>
           {item.status === 'closed' ? 'Zamknięty' : 'W toku'}
         </span>
-      </div>
+      </span>
       <span className="history-main-title">{item.mainTitle}</span>
-      <span className="history-flags" aria-label={goalsAriaLabel(item.goalsCompleted)}>
+      {/* role="img" + aria-label → czytnik odczyta zagregowane „Dowiezione X z 3" zamiast
+          symboli ✓/✗/– (te są aria-hidden). (CR NIT-4) */}
+      <span
+        className="history-flags"
+        role="img"
+        aria-label={goalsAriaLabel(item.goalsCompleted)}
+      >
         {item.goalsCompleted.map((c, i) => (
           <span key={i} className={`history-flag ${flagClass(c)}`} aria-hidden="true">
             {c === null ? '–' : c ? '✓' : '✗'}

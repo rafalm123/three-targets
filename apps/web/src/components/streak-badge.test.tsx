@@ -21,6 +21,21 @@ describe('StreakBadge (FE-11)', () => {
     expect(badge.getAttribute('title')).toContain('łącznie zamkniętych: 20');
   });
 
+  it('pluralizacja: current===1 → „1 dzień", nie „1 dni" (CR NIT-2)', async () => {
+    getStreak.mockResolvedValue({ current: 1, longest: 1, totalDays: 1, asOfDate: '2026-07-09' });
+    render(<StreakBadge />);
+    await waitFor(() => expect(screen.getByText('1')).toBeTruthy());
+    const badge = screen.getByLabelText(/Seria: 1 dzień/);
+    expect(badge.getAttribute('title')).toContain('Seria: 1 dzień');
+    expect(badge.getAttribute('title')).not.toContain('1 dni');
+  });
+
+  it('pluralizacja: current===0 → „0 dni"', async () => {
+    getStreak.mockResolvedValue({ current: 0, longest: 3, totalDays: 3, asOfDate: '2026-07-09' });
+    render(<StreakBadge />);
+    await waitFor(() => expect(screen.getByLabelText(/Seria: 0 dni/)).toBeTruthy());
+  });
+
   it('miękka degradacja: błąd → nic nie renderuje (nie wywala ekranu)', async () => {
     getStreak.mockRejectedValue(new Error('offline'));
     const { container } = render(<StreakBadge />);

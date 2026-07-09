@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { AppShell } from '../components/app-shell';
 import { DayReadonlyView, GoalCard } from '../components/day-readonly';
 import { EmptyState, ErrorState, LoadingState } from '../components/states';
+import { useStreakRefresh } from '../components/streak-refresh';
 import { getToday, updateMorning } from '../lib/api';
 import { useSession } from '../lib/auth-client';
 import { EveningForm } from './evening-form';
@@ -118,6 +119,7 @@ function DayHub({
   onConflict: (code: string | undefined) => void;
 }): ReactNode {
   const [mode, setMode] = useState<DayMode>('view');
+  const { bumpStreak } = useStreakRefresh();
   const isClosed = day.status === 'closed';
 
   // Zamknięty dzień jest niemutowalny — zawsze read-only, ignorujemy pod-tryby.
@@ -151,7 +153,15 @@ function DayHub({
         >
           ← Wróć
         </button>
-        <EveningForm day={day} onClosed={onDayChange} onConflict={onConflict} />
+        <EveningForm
+          day={day}
+          onClosed={(closed) => {
+            // Dzień właśnie zamknięty → seria mogła wzrosnąć; odśwież wskaźnik od razu (CR NIT-1).
+            bumpStreak();
+            onDayChange(closed);
+          }}
+          onConflict={onConflict}
+        />
       </>
     );
   }

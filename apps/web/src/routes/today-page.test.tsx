@@ -8,12 +8,13 @@ import { TodayPage } from './today-page';
 // Mockujemy klienta API dnia i sesję — testujemy routing pod-stanów HUB, nie sieć/auth.
 const getToday = vi.fn();
 const updateMorning = vi.fn();
-// getStreak używa StreakBadge w AppShell (globalny chrome) — zwracamy pending promise, by badge
-// pozostał w stanie „miękkiej degradacji" (null) i nie mieszał w asercjach HUB.
+// getStreak używa StreakBadge w AppShell (globalny chrome) — pending promise: badge zostaje w
+// „miękkiej degradacji" (null), a wywołania są policzalne (do testu odświeżenia po zamknięciu dnia).
+const getStreak = vi.fn(() => new Promise(() => {}));
 vi.mock('../lib/api', () => ({
   getToday: (...a: unknown[]) => getToday(...a) as unknown,
   updateMorning: (...a: unknown[]) => updateMorning(...a) as unknown,
-  getStreak: () => new Promise(() => {}),
+  getStreak: () => getStreak() as unknown,
 }));
 vi.mock('../lib/auth-client', () => ({
   authClient: { signOut: vi.fn() },
@@ -131,12 +132,17 @@ describe('TodayPage (HUB)', () => {
     await user.click(screen.getByRole('button', { name: 'Oznacz wieczór' }));
     expect(screen.getByText('EVENING_FORM')).toBeTruthy();
 
+    // getStreak wołany na mount (StreakBadge). Po zamknięciu dnia ma być refetchowany (CR NIT-1).
+    expect(getStreak).toHaveBeenCalledTimes(1);
+
     // onClosed podmienia dzień na closed bez ponownego GET → podsumowanie read-only.
     await user.click(screen.getByRole('button', { name: 'SIMULATE_CLOSE' }));
     await waitFor(() =>
       expect(screen.getByText('Ten dzień jest już podsumowany i tylko do odczytu.')).toBeTruthy(),
     );
     expect(getToday).toHaveBeenCalledTimes(1);
+    // Zamknięcie dnia bumpuje refreshKey → StreakBadge fetchuje serię ponownie (nagroda widoczna od razu).
+    await waitFor(() => expect(getStreak).toHaveBeenCalledTimes(2));
   });
 
   it('„Edytuj poranek" → MorningForm w trybie edycji (heading „Edytuj poranek")', async () => {

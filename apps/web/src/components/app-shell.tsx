@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
 import { StreakBadge } from './streak-badge';
+import { StreakRefreshProvider } from './streak-refresh';
 import { LogoutButton } from './logout-button';
 
 /**
@@ -29,7 +30,7 @@ export function AppShell({
   headerActions?: ReactNode;
   showNav?: boolean;
 }): ReactNode {
-  return (
+  const shell = (
     <div className="app-shell">
       <header className="app-header">
         <h1>Trzy Cele</h1>
@@ -52,4 +53,8 @@ export function AppShell({
       <main className="app-main">{children}</main>
     </div>
   );
+
+  // Odświeżanie serii wiąże StreakBadge (nagłówek) z widokiem (treść) — oba pod jednym providerem.
+  // Tylko dla ekranów za loginem (showNav); auth-ekrany nie mają ani streaka, ani mutacji dnia.
+  return showNav ? <StreakRefreshProvider>{shell}</StreakRefreshProvider> : shell;
 }
