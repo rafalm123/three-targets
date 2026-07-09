@@ -3,37 +3,32 @@ import { useState, type FormEvent, type ReactNode } from 'react';
 import { ApiRequestError, createDay, GENERIC_API_ERROR } from '../lib/api';
 
 /**
- * Formularz „Rano" (FE-7): 1 cel główny + 2 poboczne (`title` wymagany, `note` opcjonalna) +
- * notatka poranna. Walidacja kontraktem `morningEntrySchema` (`safeParse`) PRZED wysłaniem —
- * to samo źródło prawdy, co backend. Po sukcesie `onCreated(day)` oddaje utworzony dzień w górę
- * (HUB przełącza się na widok dnia). 409 `DAY_ALREADY_EXISTS` = dzień powstał równolegle →
- * `onDayAlreadyExists()` (HUB przeładuje „dziś"), zamiast pokazywać mylący błąd.
+ * Formularz „Rano" — używany w DWÓCH trybach (reuse zamiast duplikacji):
+ *  - **tworzenie** (FE-7): pusty formularz → `POST /api/days` (`createDay`, domyślny `onSubmit`),
+ *  - **edycja** (BE-11): prefill z `initialDay` → `PATCH /api/days/today` (wstrzyknięty `onSubmit`).
+ *
+ * 1 cel główny + 2 poboczne (`title` wymagany, `note` opcjonalna) + notatka poranna. Walidacja
+ * kontraktem `morningEntrySchema` (`safeParse`) PRZED wysłaniem — to samo źródło prawdy, co backend.
+ * PATCH ma semantykę **pełnego zastąpienia**: `buildEntry` zawsze składa komplet 3 celów +
+ * `morningNote`, więc pominięte pola opcjonalne serwer wyzeruje (null) — dokładnie jak trzeba.
+ *
+ * Po sukcesie `onSuccess(day)` oddaje dzień w górę (HUB przełącza widok). Konflikty (`409`/`404`)
+ * są przekazywane per-kod do `onConflict(code)` — wołający decyduje (zwykle: przeładuj HUB),
+ * bez pokazywania mylącego błędu w formularzu.
  */
+
+/** Kody błędów HTTP, które wołający obsługuje przez przeładowanie (nie pokazujemy ich w formie). */
+type ConflictCode = 'DAY_ALREADY_EXISTS' | 'DAY_ALREADY_CLOSED' | 'NO_DAY_TODAY';
+const CONFLICT_CODES: readonly ConflictCode[] = [
+  'DAY_ALREADY_EXISTS',
+  'DAY_ALREADY_CLOSED',
+  'NO_DAY_TODAY',
+];
 
 /** Błędy pól formularza — indeksowane, bo cele poboczne to lista. */
 interface FieldErrors {
   mainTitle?: string;
   secondaryTitle?: [string | undefined, string | undefined];
-}
-
-/** Zbiera wartości formularza w kształt `MorningEntry` (puste opcjonalne pola pomijamy). */
-function buildEntry(state: FormState): MorningEntry {
-  const trimmedOrUndef = (v: string): string | undefined => {
-    const t = v.trim();
-    return t.length > 0 ? t : undefined;
-  };
-  const goal = (title: string, note: string) => ({
-    title: title.trim(),
-    ...(trimmedOrUndef(note) ? { note: note.trim() } : {}),
-  });
-  return {
-    main: goal(state.mainTitle, state.mainNote),
-    secondary: [
-      goal(state.sec0Title, state.sec0Note),
-      goal(state.sec1Title, state.sec1Note),
-    ],
-    ...(trimmedOrUndef(state.morningNote) ? { morningNote: state.morningNote.trim() } : {}),
-  };
 }
 
 interface FormState {
@@ -56,14 +51,64 @@ const EMPTY: FormState = {
   morningNote: '',
 };
 
+/** Zbiera wartości formularza w kształt `MorningEntry` (puste opcjonalne pola pomijamy). */
+function buildEntry(state: FormState): MorningEntry {
+  const trimmedOrUndef = (v: string): string | undefined => {
+    const t = v.trim();
+    return t.length > 0 ? t : undefined;
+  };
+  const goal = (title: string, note: string) => ({
+    title: title.trim(),
+    ...(trimmedOrUndef(note) ? { note: note.trim() } : {}),
+  });
+  return {
+    main: goal(state.mainTitle, state.mainNote),
+    secondary: [goal(state.sec0Title, state.sec0Note), goal(state.sec1Title, state.sec1Note)],
+    ...(trimmedOrUndef(state.morningNote) ? { morningNote: state.morningNote.trim() } : {}),
+  };
+}
+
+/** Prefill stanu formularza z istniejącego dnia (tryb edycji). Brak dnia → pusty formularz. */
+function initialState(day?: Day): FormState {
+  if (!day) return EMPTY;
+  const main = day.goals.find((g) => g.kind === 'main');
+  const secondary = day.goals.filter((g) => g.kind === 'secondary');
+  return {
+    mainTitle: main?.title ?? '',
+    mainNote: main?.note ?? '',
+    sec0Title: secondary[0]?.title ?? '',
+    sec0Note: secondary[0]?.note ?? '',
+    sec1Title: secondary[1]?.title ?? '',
+    sec1Note: secondary[1]?.note ?? '',
+    morningNote: day.morningNote ?? '',
+  };
+}
+
 export function MorningForm({
-  onCreated,
-  onDayAlreadyExists,
+  initialDay,
+  heading = 'Poranek — zapisz 3 cele',
+  submitLabel = 'Zapisz poranek',
+  submittingLabel = 'Zapisywanie…',
+  onSubmit = createDay,
+  onSuccess,
+  onConflict,
+  onCancel,
 }: {
-  onCreated: (day: Day) => void;
-  onDayAlreadyExists: () => void;
+  /** Dzień do prefill (tryb edycji). Pusty = tryb tworzenia. */
+  initialDay?: Day;
+  heading?: string;
+  submitLabel?: string;
+  submittingLabel?: string;
+  /** Wywołanie zapisu — domyślnie `createDay` (POST); w edycji wstrzykujemy `updateMorning` (PATCH). */
+  onSubmit?: (entry: MorningEntry) => Promise<Day>;
+  /** Sukces zapisu → dzień w górę (HUB przełącza widok). */
+  onSuccess: (day: Day) => void;
+  /** Konflikt HTTP (409/404) → wołający zwykle przeładowuje HUB. */
+  onConflict?: (code: ConflictCode) => void;
+  /** Opcjonalny „Anuluj" (tryb edycji — powrót do widoku dnia). */
+  onCancel?: () => void;
 }): ReactNode {
-  const [state, setState] = useState<FormState>(EMPTY);
+  const [state, setState] = useState<FormState>(() => initialState(initialDay));
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -101,14 +146,14 @@ export function MorningForm({
     setFieldErrors({});
     setSubmitting(true);
 
-    // createDay rzuca ApiRequestError dla odpowiedzi HTTP !ok, a natywny fetch RZUCA przy awarii
+    // onSubmit rzuca ApiRequestError dla odpowiedzi HTTP !ok, a natywny fetch RZUCA przy awarii
     // sieci → jeden try/catch obsługuje oba, formularz nie zawisa (jak w formularzach auth).
     try {
-      const day = await createDay(parsed.data);
-      onCreated(day);
+      const day = await onSubmit(parsed.data);
+      onSuccess(day);
     } catch (err) {
-      if (err instanceof ApiRequestError && err.code === 'DAY_ALREADY_EXISTS') {
-        onDayAlreadyExists();
+      if (err instanceof ApiRequestError && isConflictCode(err.code)) {
+        onConflict?.(err.code);
         return;
       }
       setFormError(err instanceof ApiRequestError ? err.message : GENERIC_API_ERROR);
@@ -119,7 +164,7 @@ export function MorningForm({
 
   return (
     <form className="form" onSubmit={handleSubmit} noValidate>
-      <h2>Poranek — zapisz 3 cele</h2>
+      <h2>{heading}</h2>
 
       {formError ? (
         <div className="form-error" role="alert">
@@ -202,9 +247,26 @@ export function MorningForm({
         />
       </div>
 
-      <button type="submit" className="button" disabled={submitting}>
-        {submitting ? 'Zapisywanie…' : 'Zapisz poranek'}
-      </button>
+      <div className="form-actions">
+        <button type="submit" className="button" disabled={submitting}>
+          {submitting ? submittingLabel : submitLabel}
+        </button>
+        {onCancel ? (
+          <button
+            type="button"
+            className="button button-secondary"
+            onClick={onCancel}
+            disabled={submitting}
+          >
+            Anuluj
+          </button>
+        ) : null}
+      </div>
     </form>
   );
+}
+
+/** Zawęża `string | undefined` do znanego kodu konfliktu (type guard dla `onConflict`). */
+function isConflictCode(code: string | undefined): code is ConflictCode {
+  return code !== undefined && (CONFLICT_CODES as readonly string[]).includes(code);
 }

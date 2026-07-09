@@ -2,21 +2,23 @@ import type { Day, Goal } from '@trzy-cele/shared';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { AppShell } from '../components/app-shell';
 import { EmptyState, ErrorState, LoadingState } from '../components/states';
-import { getToday } from '../lib/api';
+import { getToday, updateMorning } from '../lib/api';
 import { authClient, useSession } from '../lib/auth-client';
 import { authErrorMessage, GENERIC_AUTH_ERROR } from '../lib/auth-errors';
+import { EveningForm } from './evening-form';
 import { MorningForm } from './morning-form';
 
 /**
  * Widok dnia dzisiejszego — HUB (FE-9). Woła `GET /api/days/today` i kieruje do właściwej akcji
  * wg stanu dnia:
- *  - `day === null`      → CTA „wypełnij poranek" → formularz `MorningForm` (FE-7),
- *  - `evening_pending`   → 3 cele + CTA „oznacz wieczór" (sam widok wieczoru to Plaster 2 —
- *                          tu przycisk disabled, `// TODO FE-8`),
+ *  - `day === null`      → formularz poranny `MorningForm` (FE-7),
+ *  - `evening_pending`   → widok dnia z akcjami: „Oznacz wieczór" (FE-8) i „Edytuj poranek" (BE-11),
  *  - `closed`            → read-only podsumowanie dnia.
  *
- * Ładowanie odpinamy w tym miejscu (jeden fetch na wejściu), by nie migać przy przełączaniu
- * pod-stanów. Wyloguj żyje w `headerActions` (przeniesione z dawnego HomePage).
+ * Przy `evening_pending` HUB ma trzy pod-tryby lokalne: `view` (domyślny), `edit` (edycja poranna),
+ * `evening` (odznaczanie wieczorne). Wszystkie operują na tym samym pobranym dniu; sukces mutacji
+ * podmienia dzień w stanie bez ponownego fetcha, a konflikt (dzień zamknięty/zniknął w międzyczasie)
+ * przeładowuje HUB.
  */
 
 type LoadState =
@@ -24,9 +26,13 @@ type LoadState =
   | { kind: 'error' }
   | { kind: 'ready'; day: Day | null };
 
+/** Pod-tryb widoku dnia przy `evening_pending`. */
+type DayMode = 'view' | 'edit' | 'evening';
+
 export function TodayPage(): ReactNode {
   const { data: session } = useSession();
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
+  const [notice, setNotice] = useState<string | null>(null);
 
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
@@ -46,6 +52,15 @@ export function TodayPage(): ReactNode {
   useEffect(() => {
     void load();
   }, [load]);
+
+  /** Konflikt mutacji (dzień zamknięty/zniknął) — pokaż komunikat i przeładuj świeży stan. */
+  const handleConflict = useCallback(
+    (code: string | undefined): void => {
+      setNotice(conflictMessage(code));
+      void load();
+    },
+    [load],
+  );
 
   async function handleSignOut(): Promise<void> {
     setSignOutError(null);
@@ -79,6 +94,12 @@ export function TodayPage(): ReactNode {
         </div>
       ) : null}
 
+      {notice ? (
+        <div className="form-error" role="alert">
+          {notice}
+        </div>
+      ) : null}
+
       {state.kind === 'loading' ? <LoadingState label="Ładowanie dnia…" /> : null}
 
       {state.kind === 'error' ? (
@@ -91,31 +112,113 @@ export function TodayPage(): ReactNode {
       ) : null}
 
       {state.kind === 'ready' && state.day === null ? (
-        <MorningForm onCreated={(day) => setState({ kind: 'ready', day })} onDayAlreadyExists={load} />
+        <MorningForm
+          onSuccess={(day) => {
+            setNotice(null);
+            setState({ kind: 'ready', day });
+          }}
+          onConflict={() => {
+            void load();
+          }}
+        />
       ) : null}
 
       {state.kind === 'ready' && state.day !== null ? (
-        <DayView day={state.day} userName={session?.user.name ?? session?.user.email} />
+        <DayHub
+          day={state.day}
+          userName={session?.user.name ?? session?.user.email}
+          onDayChange={(day) => {
+            setNotice(null);
+            setState({ kind: 'ready', day });
+          }}
+          onConflict={handleConflict}
+        />
       ) : null}
     </AppShell>
   );
 }
 
-/** Widok istniejącego dnia: cele + (wg statusu) CTA wieczoru albo podsumowanie read-only. */
-function DayView({ day, userName }: { day: Day; userName?: string }): ReactNode {
+/** Kontener widoku istniejącego dnia z pod-trybami (view/edit/evening). */
+function DayHub({
+  day,
+  userName,
+  onDayChange,
+  onConflict,
+}: {
+  day: Day;
+  userName?: string;
+  onDayChange: (day: Day) => void;
+  onConflict: (code: string | undefined) => void;
+}): ReactNode {
+  const [mode, setMode] = useState<DayMode>('view');
+  const isClosed = day.status === 'closed';
+
+  // Zamknięty dzień jest niemutowalny — zawsze read-only, ignorujemy pod-tryby.
+  if (isClosed) return <ClosedDay day={day} userName={userName} />;
+
+  if (mode === 'edit') {
+    return (
+      <MorningForm
+        initialDay={day}
+        heading="Edytuj poranek"
+        submitLabel="Zapisz zmiany"
+        submittingLabel="Zapisywanie…"
+        onSubmit={updateMorning}
+        onSuccess={(updated) => {
+          setMode('view');
+          onDayChange(updated);
+        }}
+        onConflict={onConflict}
+        onCancel={() => setMode('view')}
+      />
+    );
+  }
+
+  if (mode === 'evening') {
+    return (
+      <>
+        <button
+          type="button"
+          className="button button-secondary back-button"
+          onClick={() => setMode('view')}
+        >
+          ← Wróć
+        </button>
+        <EveningForm day={day} onClosed={onDayChange} onConflict={onConflict} />
+      </>
+    );
+  }
+
+  return (
+    <PendingDay
+      day={day}
+      userName={userName}
+      onEdit={() => setMode('edit')}
+      onEvening={() => setMode('evening')}
+    />
+  );
+}
+
+/** Widok dnia `evening_pending`: cele + akcje „Oznacz wieczór" i „Edytuj poranek". */
+function PendingDay({
+  day,
+  userName,
+  onEdit,
+  onEvening,
+}: {
+  day: Day;
+  userName?: string;
+  onEdit: () => void;
+  onEvening: () => void;
+}): ReactNode {
   const main = day.goals.find((g) => g.kind === 'main');
   const secondary = day.goals.filter((g) => g.kind === 'secondary');
-  const isClosed = day.status === 'closed';
 
   return (
     <section className="day-view" aria-label="Dzisiejszy dzień">
       <header className="day-view-header">
         <h2>Dziś{userName ? `, ${userName}` : ''}</h2>
-        {/* Modyfikator dokładamy tylko dla `closed` (jedyny stan zmieniający wygląd) — brak
-            martwego selektora `.day-badge-evening_pending` bez reguły. */}
-        <span className={`day-badge${isClosed ? ' day-badge-closed' : ''}`}>
-          {isClosed ? 'Dzień zamknięty' : 'Wieczór do oznaczenia'}
-        </span>
+        <span className="day-badge">Wieczór do oznaczenia</span>
       </header>
 
       {main ? <GoalCard goal={main} primary /> : null}
@@ -130,28 +233,53 @@ function DayView({ day, userName }: { day: Day; userName?: string }): ReactNode 
         </div>
       ) : null}
 
-      {isClosed ? (
-        <>
-          {day.eveningNote ? (
-            <div className="day-note">
-              <span className="day-note-label">Notatka wieczorna</span>
-              <p>{day.eveningNote}</p>
-            </div>
-          ) : null}
-          <EmptyState
-            title="Dzień zamknięty"
-            message="Ten dzień jest już podsumowany i tylko do odczytu."
-          />
-        </>
-      ) : (
-        <div className="day-actions">
-          {/* TODO FE-8: pełny widok „Wieczór" (odznaczanie 3 celów). Na razie zablokowane. */}
-          <button type="button" className="button" disabled title="Dostępne wkrótce">
-            Oznacz wieczór
-          </button>
-          <p className="form-footer">Oznaczanie wieczoru dojdzie wkrótce.</p>
+      <div className="day-actions">
+        <button type="button" className="button" onClick={onEvening}>
+          Oznacz wieczór
+        </button>
+        <button type="button" className="button button-secondary" onClick={onEdit}>
+          Edytuj poranek
+        </button>
+      </div>
+    </section>
+  );
+}
+
+/** Widok dnia `closed`: podsumowanie read-only (cele z oznaczeniami + notatki). */
+function ClosedDay({ day, userName }: { day: Day; userName?: string }): ReactNode {
+  const main = day.goals.find((g) => g.kind === 'main');
+  const secondary = day.goals.filter((g) => g.kind === 'secondary');
+
+  return (
+    <section className="day-view" aria-label="Dzisiejszy dzień">
+      <header className="day-view-header">
+        <h2>Dziś{userName ? `, ${userName}` : ''}</h2>
+        <span className="day-badge day-badge-closed">Dzień zamknięty</span>
+      </header>
+
+      {main ? <GoalCard goal={main} primary /> : null}
+      {secondary.map((g) => (
+        <GoalCard key={g.id} goal={g} />
+      ))}
+
+      {day.morningNote ? (
+        <div className="day-note">
+          <span className="day-note-label">Notatka poranna</span>
+          <p>{day.morningNote}</p>
         </div>
-      )}
+      ) : null}
+
+      {day.eveningNote ? (
+        <div className="day-note">
+          <span className="day-note-label">Notatka wieczorna</span>
+          <p>{day.eveningNote}</p>
+        </div>
+      ) : null}
+
+      <EmptyState
+        title="Dzień zamknięty"
+        message="Ten dzień jest już podsumowany i tylko do odczytu."
+      />
     </section>
   );
 }
@@ -173,7 +301,23 @@ function GoalCard({ goal, primary = false }: { goal: Goal; primary?: boolean }):
       </div>
       <h3 className="goal-title">{goal.title}</h3>
       {goal.note ? <p className="goal-note">{goal.note}</p> : null}
-      {goal.completedNote ? <p className="goal-note goal-note-completed">{goal.completedNote}</p> : null}
+      {goal.completedNote ? (
+        <p className="goal-note goal-note-completed">{goal.completedNote}</p>
+      ) : null}
     </article>
   );
+}
+
+/** Komunikat dla konfliktu mutacji dnia (wspólny dla wieczoru i edycji). */
+function conflictMessage(code: string | undefined): string {
+  switch (code) {
+    case 'DAY_ALREADY_CLOSED':
+      return 'Ten dzień został już zamknięty. Odświeżono aktualny stan.';
+    case 'GOAL_MISMATCH':
+      return 'Cele dnia zmieniły się w międzyczasie. Odświeżono — spróbuj ponownie.';
+    case 'NO_DAY_TODAY':
+      return 'Nie znaleziono dzisiejszego dnia. Odświeżono aktualny stan.';
+    default:
+      return 'Stan dnia się zmienił. Odświeżono aktualny stan.';
+  }
 }

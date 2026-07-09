@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiRequestError, createDay, getStreak, getToday } from './api';
-import type { MorningEntry } from '@trzy-cele/shared';
+import {
+  ApiRequestError,
+  createDay,
+  getStreak,
+  getToday,
+  submitEvening,
+  updateMorning,
+} from './api';
+import type { EveningEntry, MorningEntry } from '@trzy-cele/shared';
 
 // Mockujemy globalny fetch — testujemy warstwę klienta (koperty, walidacja, mapowanie błędów),
 // nie realną sieć.
@@ -27,6 +34,17 @@ const VALID_DAY = {
 const MORNING_ENTRY: MorningEntry = {
   main: { title: 'Główny cel' },
   secondary: [{ title: 'Poboczny 1' }, { title: 'Poboczny 2' }],
+};
+
+const CLOSED_DAY = { ...VALID_DAY, status: 'closed' as const };
+
+const EVENING_ENTRY: EveningEntry = {
+  goals: [
+    { id: 'g0', completed: true },
+    { id: 'g1', completed: false },
+    { id: 'g2', completed: true, completedNote: 'prawie' },
+  ],
+  eveningNote: 'podsumowanie',
 };
 
 afterEach(() => {
@@ -86,6 +104,69 @@ describe('createDay', () => {
     await expect(createDay(MORNING_ENTRY)).rejects.toMatchObject({
       status: 500,
       code: undefined,
+    });
+  });
+});
+
+describe('updateMorning', () => {
+  it('happy path: PATCH /api/days/today z ciałem, zwraca goły Day', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(VALID_DAY));
+    const day = await updateMorning(MORNING_ENTRY);
+    expect(day.id).toBe('day-1');
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/days/today');
+    expect(init.method).toBe('PATCH');
+    expect(JSON.parse(init.body as string)).toEqual(MORNING_ENTRY);
+  });
+
+  it('409 DAY_ALREADY_CLOSED → ApiRequestError z tym code', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(
+        { error: { message: 'Dzień zamknięty', code: 'DAY_ALREADY_CLOSED' } },
+        { ok: false, status: 409 },
+      ),
+    );
+    await expect(updateMorning(MORNING_ENTRY)).rejects.toMatchObject({
+      code: 'DAY_ALREADY_CLOSED',
+      status: 409,
+    });
+  });
+});
+
+describe('submitEvening', () => {
+  it('happy path: POST /api/days/today/evening, zwraca goły Day (closed)', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(CLOSED_DAY));
+    const day = await submitEvening(EVENING_ENTRY);
+    expect(day.status).toBe('closed');
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/days/today/evening');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual(EVENING_ENTRY);
+  });
+
+  it('409 DAY_ALREADY_CLOSED → ApiRequestError z tym code', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(
+        { error: { message: 'Już zamknięty', code: 'DAY_ALREADY_CLOSED' } },
+        { ok: false, status: 409 },
+      ),
+    );
+    await expect(submitEvening(EVENING_ENTRY)).rejects.toMatchObject({
+      code: 'DAY_ALREADY_CLOSED',
+      status: 409,
+    });
+  });
+
+  it('400 GOAL_MISMATCH → ApiRequestError z tym code', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(
+        { error: { message: 'Niezgodne cele', code: 'GOAL_MISMATCH' } },
+        { ok: false, status: 400 },
+      ),
+    );
+    await expect(submitEvening(EVENING_ENTRY)).rejects.toMatchObject({
+      code: 'GOAL_MISMATCH',
+      status: 400,
     });
   });
 });

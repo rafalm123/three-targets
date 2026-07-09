@@ -175,6 +175,52 @@ a {
   color: var(--color-muted);
 }
 
+/* --- Wybór dowieziony/nie (FE-8) --- */
+.mark-choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.mark-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0 var(--space-2);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.mark-option:has(input:checked) {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.mark-option:focus-within {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+/* --- Akcje formularza / nawigacja pod-trybów --- */
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.form-actions .button {
+  flex: 1 1 auto;
+}
+
+.back-button {
+  align-self: flex-start;
+  margin-bottom: var(--space-2);
+}
+
 .field-error {
   color: var(--color-error);
   font-size: 0.8125rem;

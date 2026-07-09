@@ -7,16 +7,17 @@ import { TodayPage } from './today-page';
 
 // Mockujemy klienta API dnia i sesję — testujemy routing pod-stanów HUB, nie sieć/auth.
 const getToday = vi.fn();
+const updateMorning = vi.fn();
 vi.mock('../lib/api', () => ({
   getToday: (...a: unknown[]) => getToday(...a) as unknown,
+  updateMorning: (...a: unknown[]) => updateMorning(...a) as unknown,
 }));
 vi.mock('../lib/auth-client', () => ({
   authClient: { signOut: vi.fn() },
   useSession: () => ({ data: { user: { name: 'Jan', email: 'jan@example.com' } } }),
 }));
 
-// MorningForm ma własny test — tu podmieniamy na sondę: pokazuje marker „wypełnij rano" oraz
-// przycisk wywołujący `onCreated` utworzonym dniem (do testu przejścia stanu bez drugiego fetcha).
+// MorningForm ma własny test — sonda: marker + przycisk wywołujący `onSuccess` utworzonym dniem.
 const CREATED_DAY: Day = {
   id: 'd-created',
   date: '2026-07-09',
@@ -30,11 +31,23 @@ const CREATED_DAY: Day = {
   ],
 };
 vi.mock('./morning-form', () => ({
-  MorningForm: ({ onCreated }: { onCreated: (day: Day) => void }) => (
+  MorningForm: ({ heading = 'MORNING_FORM', onSuccess }: { heading?: string; onSuccess: (day: Day) => void }) => (
     <div>
-      MORNING_FORM
-      <button type="button" onClick={() => onCreated(CREATED_DAY)}>
-        SIMULATE_CREATE
+      {heading}
+      <button type="button" onClick={() => onSuccess(CREATED_DAY)}>
+        SIMULATE_SUBMIT
+      </button>
+    </div>
+  ),
+}));
+
+// EveningForm ma własny test — sonda: marker + przycisk wywołujący `onClosed` zamkniętym dniem.
+vi.mock('./evening-form', () => ({
+  EveningForm: ({ onClosed }: { onClosed: (day: Day) => void }) => (
+    <div>
+      EVENING_FORM
+      <button type="button" onClick={() => onClosed({ ...CREATED_DAY, status: 'closed' })}>
+        SIMULATE_CLOSE
       </button>
     </div>
   ),
@@ -84,17 +97,17 @@ describe('TodayPage (HUB)', () => {
     await waitFor(() => expect(screen.getByText('MORNING_FORM')).toBeTruthy());
   });
 
-  it('evening_pending → pokazuje cele + zablokowane CTA „Oznacz wieczór"', async () => {
+  it('evening_pending → cele + aktywne akcje „Oznacz wieczór" i „Edytuj poranek"', async () => {
     getToday.mockResolvedValue({ day: pendingDay() });
     renderPage();
     await waitFor(() => expect(screen.getByText('Główny cel')).toBeTruthy());
     expect(screen.getByText('Poboczny A')).toBeTruthy();
-    const eveningBtn = screen.getByRole('button', { name: 'Oznacz wieczór' });
-    expect(eveningBtn).toHaveProperty('disabled', true);
+    expect(screen.getByRole('button', { name: 'Oznacz wieczór' })).toHaveProperty('disabled', false);
+    expect(screen.getByRole('button', { name: 'Edytuj poranek' })).toHaveProperty('disabled', false);
     expect(screen.queryByText('MORNING_FORM')).toBeNull();
   });
 
-  it('closed → podsumowanie read-only (badge zamknięty, brak CTA wieczoru)', async () => {
+  it('closed → podsumowanie read-only (badge zamknięty, brak akcji)', async () => {
     getToday.mockResolvedValue({ day: closedDay() });
     renderPage();
     await waitFor(() =>
@@ -103,18 +116,50 @@ describe('TodayPage (HUB)', () => {
     expect(screen.getByText('Dowiezione')).toBeTruthy();
     expect(screen.getByText('wieczorna notatka')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Oznacz wieczór' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Edytuj poranek' })).toBeNull();
   });
 
-  it('onCreated po formularzu → pokazuje cele dnia BEZ drugiego fetcha', async () => {
+  it('„Oznacz wieczór" → EveningForm; zamknięcie → podsumowanie closed', async () => {
+    getToday.mockResolvedValue({ day: pendingDay() });
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Główny cel')).toBeTruthy());
+
+    await user.click(screen.getByRole('button', { name: 'Oznacz wieczór' }));
+    expect(screen.getByText('EVENING_FORM')).toBeTruthy();
+
+    // onClosed podmienia dzień na closed bez ponownego GET → podsumowanie read-only.
+    await user.click(screen.getByRole('button', { name: 'SIMULATE_CLOSE' }));
+    await waitFor(() =>
+      expect(screen.getByText('Ten dzień jest już podsumowany i tylko do odczytu.')).toBeTruthy(),
+    );
+    expect(getToday).toHaveBeenCalledTimes(1);
+  });
+
+  it('„Edytuj poranek" → MorningForm w trybie edycji (heading „Edytuj poranek")', async () => {
+    getToday.mockResolvedValue({ day: pendingDay() });
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Główny cel')).toBeTruthy());
+
+    await user.click(screen.getByRole('button', { name: 'Edytuj poranek' }));
+    expect(screen.getByText('Edytuj poranek')).toBeTruthy();
+
+    // Zapis (onSuccess) wraca do widoku dnia z podmienionym dniem, bez ponownego GET.
+    await user.click(screen.getByRole('button', { name: 'SIMULATE_SUBMIT' }));
+    await waitFor(() => expect(screen.getByText('Cel z formularza')).toBeTruthy());
+    expect(getToday).toHaveBeenCalledTimes(1);
+  });
+
+  it('onSuccess po formularzu tworzenia → pokazuje cele dnia BEZ drugiego fetcha', async () => {
     getToday.mockResolvedValue({ day: null });
     const user = userEvent.setup();
     renderPage();
     await waitFor(() => expect(screen.getByText('MORNING_FORM')).toBeTruthy());
     expect(getToday).toHaveBeenCalledTimes(1);
 
-    await user.click(screen.getByRole('button', { name: 'SIMULATE_CREATE' }));
+    await user.click(screen.getByRole('button', { name: 'SIMULATE_SUBMIT' }));
 
-    // Hub przechodzi na widok dnia z danych zwróconych przez onCreated — bez ponownego GET.
     await waitFor(() => expect(screen.getByText('Cel z formularza')).toBeTruthy());
     expect(screen.queryByText('MORNING_FORM')).toBeNull();
     expect(getToday).toHaveBeenCalledTimes(1);
@@ -130,7 +175,6 @@ describe('TodayPage (HUB)', () => {
 
     await user.click(retry);
 
-    // Ponowienie robi drugi GET i po sukcesie pokazuje dzień.
     await waitFor(() => expect(screen.getByText('Główny cel')).toBeTruthy());
     expect(getToday).toHaveBeenCalledTimes(2);
   });
