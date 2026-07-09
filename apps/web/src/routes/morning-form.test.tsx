@@ -58,6 +58,19 @@ describe('MorningForm — tryb tworzenia (FE-7)', () => {
     expect(createDay).not.toHaveBeenCalled();
   });
 
+  it('po nieudanej walidacji fokus wraca na pierwsze błędne pole (FE-12/NIT-3)', async () => {
+    const user = userEvent.setup();
+    renderCreate();
+    // Wypełniamy tylko główny → błędne są tytuły pobocznych; fokus ma trafić na pierwszy z nich.
+    await user.type(screen.getByLabelText('Tytuł', { selector: '#main-title' }), 'Główny');
+    await user.click(screen.getByRole('button', { name: 'Zapisz poranek' }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByLabelText('Tytuł', { selector: '#sec-0-title' }),
+      ),
+    );
+  });
+
   it('poprawne dane → createDay, onSuccess z utworzonym dniem', async () => {
     const day = existingDay();
     createDay.mockResolvedValue(day);

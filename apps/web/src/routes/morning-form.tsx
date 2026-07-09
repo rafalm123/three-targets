@@ -1,5 +1,5 @@
 import { morningEntrySchema, type Day, type MorningEntry } from '@trzy-cele/shared';
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { ApiRequestError, createDay, GENERIC_API_ERROR } from '../lib/api';
 
 /**
@@ -113,8 +113,25 @@ export function MorningForm({
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Refy do pól wymaganych — po nieudanej walidacji przenosimy fokus na pierwsze błędne
+  // (FE-12/NIT-3, a11y). Kolejność: główny → poboczny 1 → poboczny 2.
+  const mainTitleRef = useRef<HTMLInputElement>(null);
+  const sec0TitleRef = useRef<HTMLInputElement>(null);
+  const sec1TitleRef = useRef<HTMLInputElement>(null);
+  const secTitleRefs = [sec0TitleRef, sec1TitleRef] as const;
+
   function set<K extends keyof FormState>(key: K, value: string): void {
     setState((prev) => ({ ...prev, [key]: value }));
+  }
+
+  /** Fokus na pierwsze błędne pole (główny → poboczne) — a11y po nieudanej walidacji. */
+  function focusFirstError(errors: FieldErrors): void {
+    if (errors.mainTitle) {
+      mainTitleRef.current?.focus();
+      return;
+    }
+    const badSecondary = errors.secondaryTitle?.findIndex(Boolean) ?? -1;
+    if (badSecondary >= 0) secTitleRefs[badSecondary]?.current?.focus();
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -141,6 +158,7 @@ export function MorningForm({
       if (!errors.mainTitle && !errors.secondaryTitle) {
         setFormError(parsed.error.issues[0]?.message ?? GENERIC_API_ERROR);
       }
+      focusFirstError(errors);
       return;
     }
     setFieldErrors({});
@@ -178,6 +196,7 @@ export function MorningForm({
           <label htmlFor="main-title">Tytuł</label>
           <input
             id="main-title"
+            ref={mainTitleRef}
             type="text"
             value={state.mainTitle}
             onChange={(e) => set('mainTitle', e.target.value)}
@@ -212,6 +231,7 @@ export function MorningForm({
               <label htmlFor={`sec-${i}-title`}>Tytuł</label>
               <input
                 id={`sec-${i}-title`}
+                ref={secTitleRefs[i]}
                 type="text"
                 value={state[titleKey]}
                 onChange={(e) => set(titleKey, e.target.value)}
