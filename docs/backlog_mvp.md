@@ -10,6 +10,13 @@
 > Rev. po recenzji planu (fable 5): **jeden kontener (API + statyk SPA)** zamiast dwóch hostingów →
 > znika CORS i osobny deploy FE; dodany **backup bazy** i **docker-compose z lokalnym Postgresem**.
 
+## ✅ Stan realizacji (2026-07-09) — szczegóły w `PROGRESS.md`
+
+- **Fundament:** FND-1…5b ✅ · **FND-6 deploy** i **FND-7 backup** — skonfigurowane w repo, uruchomienie czeka na właściciela (Render + sekret Neona, `DEPLOY.md`).
+- **Backend Fazy 1: KOMPLETNY** ✅ — BE-3…17 (auth, dzień/cele, wpis poranny, edycja, wieczór, pobranie dnia + po dacie, historia, streak, granica doby). Unit 35 / integracja 35, na `main`.
+- **Frontend:** fundament **FE-1…5 ✅** (auth UI, trasy, guardy, layout, klient auth — na `main`). **DO ZROBIENIA: FE-6…12** (widoki dziennika) — to jedyny brakujący kawałek funkcji MVP.
+- **Następny agent (FE):** czyta `PROGRESS.md` → sekcja „Co zostało" + „Konwencje i pułapki".
+
 ---
 
 ## Definicja MVP

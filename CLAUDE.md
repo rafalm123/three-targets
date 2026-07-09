@@ -171,8 +171,11 @@ pnpm dev                     # api + web (Vite proxy /api → api)
 
 ## 8. Roadmapa (techniczna)
 
-- **Faza 0 — Walking Skeleton:** monorepo, CI, docker-compose (lokalny Postgres), Better Auth + Neon, jeden kontener (API+statyk), deploy E2E na Render z działającym logowaniem, backup bazy. *Najpierw dowodzimy że pipeline działa, potem funkcje.*
-- **Faza 1 — MVP:** logowanie · rano 1 główny + 2 poboczne + notatki · wieczorem done/not + notatka · historia/dziennik · licznik dni/streak.
+> **Aktualny stan (2026-07-09):** patrz `docs/PROGRESS.md`. Skrót: Faza 0 gotowa (deploy/backup skonfigurowane,
+> uruchomienie czeka na właściciela); backend Fazy 1 **kompletny**; z Fazy 1 zostają **widoki FE (FE-6…12)**.
+
+- **Faza 0 — Walking Skeleton:** monorepo, CI, docker-compose (lokalny Postgres), Better Auth + Neon, jeden kontener (API+statyk), deploy E2E na Render z działającym logowaniem, backup bazy. *Najpierw dowodzimy że pipeline działa, potem funkcje.* — ✅ kod/konfiguracja gotowe; faktyczny deploy+backup = akcja właściciela (`docs/DEPLOY.md`).
+- **Faza 1 — MVP:** logowanie · rano 1 główny + 2 poboczne + notatki · wieczorem done/not + notatka · historia/dziennik · licznik dni/streak. — Backend ✅ (BE-3…17), auth-UI ✅ (FE-1…5); **zostają widoki dziennika FE-6…12**.
 - **Faza 2 — Punkty:** ledger (integer/półpunkty), +poboczne, −niewykonany główny, suma + streak.
 - **Faza 3 — Koło ratunkowe + Admin:** lifeline 1/mies., rola admina (anulowanie kary, audyt).
 - **Faza 4 — Polish:** statystyki/wykresy, eksport dziennika (JSON = też ręczny backup).
