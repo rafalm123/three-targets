@@ -171,8 +171,9 @@ pnpm dev                     # api + web (Vite proxy /api → api)
 
 ## 8. Roadmapa (techniczna)
 
-> **Aktualny stan (2026-07-09):** patrz `docs/PROGRESS.md`. Skrót: Faza 0 gotowa (deploy/backup skonfigurowane,
-> uruchomienie czeka na właściciela); backend Fazy 1 **kompletny**; z Fazy 1 zostają **widoki FE (FE-6…12)**.
+> **Aktualny stan (2026-07-09):** **Faza 1 (MVP) domknięta i WDROŻONA NA PRODUKCJI** →
+> https://trzy-cele.onrender.com (Render free + Neon PG18). Pełne podsumowanie: `docs/PHASE1_SUMMARY.md`;
+> bieżący handoff: `docs/PROGRESS.md`.
 
 - **Faza 0 — Walking Skeleton:** monorepo, CI, docker-compose (lokalny Postgres), Better Auth + Neon, jeden kontener (API+statyk), deploy E2E na Render z działającym logowaniem, backup bazy. *Najpierw dowodzimy że pipeline działa, potem funkcje.* — ✅ kod/konfiguracja gotowe; faktyczny deploy+backup = akcja właściciela (`docs/DEPLOY.md`).
 - **Faza 1 — MVP:** logowanie · rano 1 główny + 2 poboczne + notatki · wieczorem done/not + notatka · historia/dziennik · licznik dni/streak. — Backend ✅ (BE-3…17), auth-UI ✅ (FE-1…5); **zostają widoki dziennika FE-6…12**.
