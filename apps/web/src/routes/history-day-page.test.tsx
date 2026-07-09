@@ -73,14 +73,28 @@ describe('HistoryDayPage (FE-13, trasa /historia/:date)', () => {
     ).toBeTruthy();
     expect(getDayByDate).not.toHaveBeenCalled();
     expect(screen.getByRole('link', { name: '← Wróć do historii' })).toBeTruthy();
+    // NIT-2: surowy śmieciowy param nie trafia do aria-label — neutralna etykieta „Szczegóły dnia".
+    expect(screen.getByLabelText('Szczegóły dnia')).toBeTruthy();
+    expect(screen.queryByLabelText(/not-a-date/)).toBeNull();
   });
 
-  it('przyszła/niepoprawna data po stronie BE (400) → ErrorState z powrotem', async () => {
+  it('przyszła data po stronie BE (400) → błąd TRWAŁY: BEZ „Spróbuj ponownie" (CR NIT-1)', async () => {
     getDayByDate.mockRejectedValue(new ApiRequestError('Data z przyszłości', 400, 'FUTURE_DATE'));
     renderAt('/historia/2030-01-01');
+    await waitFor(() =>
+      expect(screen.getByText('Nie można wyświetlić tego dnia')).toBeTruthy(),
+    );
+    // Retry nic nie da dla 400 → brak przycisku ponowienia; jest link powrotu.
+    expect(screen.queryByRole('button', { name: 'Spróbuj ponownie' })).toBeNull();
+    expect(screen.getByRole('link', { name: '← Wróć do historii' })).toBeTruthy();
+  });
+
+  it('błąd przejściowy (5xx/sieć) → ErrorState z „Spróbuj ponownie"', async () => {
+    getDayByDate.mockRejectedValue(new ApiRequestError('Serwer padł', 500));
+    renderAt('/historia/2026-07-08');
     await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
     expect(screen.getByText('Nie udało się wczytać tego dnia.')).toBeTruthy();
-    expect(screen.getByRole('link', { name: '← Wróć do historii' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Spróbuj ponownie' })).toBeTruthy();
   });
 
   it('link „Wróć do historii" prowadzi do /historia', async () => {

@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router-dom';
 import { AppShell } from '../components/app-shell';
 import { DayReadonlyView } from '../components/day-readonly';
 import { EmptyState, ErrorState, LoadingState } from '../components/states';
-import { getDayByDate } from '../lib/api';
+import { ApiRequestError, getDayByDate } from '../lib/api';
 import { formatDate, isValidDateParam } from './history-format';
 
 /**
@@ -12,14 +12,15 @@ import { formatDate, isValidDateParam } from './history-format';
  * z `useParams()`, nie ze stanu lokalnego → refresh/deep-link odtwarza widok (pobiera
  * `getDayByDate`), a powrót działa natywnym back-buttonem przeglądarki. Read-only (z notatkami).
  *
- * Walidacja param `date`: zły format kalendarzowy → od razu stan błędu (bez wołania API). Przyszła
- * data / niepoprawna po stronie BE → 400 → ErrorState; brak wpisu → `{day:null}` → EmptyState.
- * W każdym przypadku jest link powrotu do `/historia` (żaden nie crashuje widoku).
+ * Walidacja param `date`: zły format kalendarzowy → od razu stan błędu (bez wołania API). Po stronie
+ * BE 400 (przyszła/niepoprawna data) to błąd TRWAŁY → komunikat BEZ „Spróbuj ponownie" (retry nic
+ * nie da). Inne błędy (sieć/5xx/przejściowe) → ErrorState z retry. Brak wpisu → `{day:null}` →
+ * EmptyState. W każdym przypadku jest link powrotu do `/historia` (żaden nie crashuje widoku).
  */
 
 type DetailState =
   | { kind: 'loading' }
-  | { kind: 'error' }
+  | { kind: 'error'; permanent: boolean }
   | { kind: 'ready'; day: Day | null };
 
 export function HistoryDayPage(): ReactNode {
@@ -31,13 +32,15 @@ export function HistoryDayPage(): ReactNode {
   const load = useCallback(async (): Promise<void> => {
     if (!valid) return;
     setState({ kind: 'loading' });
-    // getDayByDate rzuca ApiRequestError (HTTP !ok, np. 400 dla przyszłej daty) lub surowy rzut
-    // fetch (awaria sieci) — obie ścieżki → ErrorState (nie crash), z linkiem powrotu w nagłówku.
+    // getDayByDate rzuca ApiRequestError (HTTP !ok) lub surowy rzut fetch (awaria sieci).
     try {
       const { day } = await getDayByDate(date);
       setState({ kind: 'ready', day });
-    } catch {
-      setState({ kind: 'error' });
+    } catch (err) {
+      // 400 = data przyszła/niepoprawna kalendarzowo → błąd TRWAŁY (ponawianie nic nie zmieni).
+      // Pozostałe (sieć/5xx) traktujemy jako przejściowe → damy retry.
+      const permanent = err instanceof ApiRequestError && err.status === 400;
+      setState({ kind: 'error', permanent });
     }
   }, [date, valid]);
 
@@ -47,14 +50,17 @@ export function HistoryDayPage(): ReactNode {
 
   return (
     <AppShell showNav>
-      <section className="day-view" aria-label={`Dzień ${date ?? ''}`}>
+      {/* aria-label: przy niepoprawnym param NIE wstrzykujemy surowej wartości — neutralna etykieta. */}
+      <section className="day-view" aria-label={valid ? `Dzień ${date}` : 'Szczegóły dnia'}>
         <Link to="/historia" className="button button-secondary back-button">
           ← Wróć do historii
         </Link>
 
-        <header className="day-view-header">
-          <h2>{valid ? formatDate(date) : 'Nieprawidłowa data'}</h2>
-        </header>
+        {valid ? (
+          <header className="day-view-header">
+            <h2>{formatDate(date)}</h2>
+          </header>
+        ) : null}
 
         {!valid ? (
           <EmptyState
@@ -65,7 +71,15 @@ export function HistoryDayPage(): ReactNode {
 
         {valid && state.kind === 'loading' ? <LoadingState label="Ładowanie dnia…" /> : null}
 
-        {valid && state.kind === 'error' ? (
+        {valid && state.kind === 'error' && state.permanent ? (
+          // Trwały błąd (400) — bez retry: pokazujemy powód i kierujemy z powrotem do listy.
+          <EmptyState
+            title="Nie można wyświetlić tego dnia"
+            message="Ta data jest nieprawidłowa lub z przyszłości. Wróć do historii i wybierz dzień z listy."
+          />
+        ) : null}
+
+        {valid && state.kind === 'error' && !state.permanent ? (
           <ErrorState
             message="Nie udało się wczytać tego dnia."
             onRetry={() => {
