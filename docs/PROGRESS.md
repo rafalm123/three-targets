@@ -1,16 +1,16 @@
 # Progress & Handoff — Trzy Cele
 
-> Stan na **2026-07-09**. Dokument żywy — źródło prawdy „gdzie jesteśmy / co zostało / jak kontynuować".
-> Dla nowego agenta (zwłaszcza frontendowego): **przeczytaj to najpierw**, potem `CLAUDE.md`.
+> Stan na **2026-07-09** (FE Fazy 1 domknięty). Dokument żywy — źródło prawdy „gdzie jesteśmy / co zostało / jak kontynuować".
+> Dla nowego agenta: **przeczytaj to najpierw**, potem `CLAUDE.md`.
 
 ## TL;DR
 
-- **Backend Fazy 1 (MVP) — KOMPLETNY.** Wszystkie endpointy dziennika + auth + kontrakty gotowe,
-  przetestowane (unit 35, integracja 35 na realnym Postgresie), na `main`.
-- **Infrastruktura — gotowa w repo.** Deploy (FND-6) i backup (FND-7) skonfigurowane; **uruchomienie
-  czeka na właściciela** (konto Render + sekret Neona).
-- **Frontend — fundament gotowy (auth), widoki dziennika DO ZROBIENIA.** To jedyny brakujący kawałek
-  *funkcji* MVP „zapisywania celów".
+- **Faza 1 (MVP) — FUNKCJONALNIE KOMPLETNA na `main`.** Backend (BE-3…17) + Frontend (FE-1…13) gotowe.
+  Pełny rytuał **rano → edycja → wieczór → historia → streak** klikalny end-to-end (lokalnie).
+  Testy zielone: shared 15 + api 35 (w tym integracja na realnym Postgresie) + web 77 = **127**.
+- **Zostaje owner-gated (poza kodem):** faktyczny **deploy** (Render) + **backup** (sekret Neona + testowy
+  restore) — patrz `docs/DEPLOY.md`. Formalne zamknięcie Fazy 1 wg @sa = przeklikany rytuał E2E **na prodzie**.
+- Drobiazgi/dług: patrz `docs/backlog_mvp.md` (sekcja „Dług techniczny": kody błędów → z.enum, fokus NIT-5).
 
 ## Co jest ZROBIONE (na `main`, zweryfikowane)
 
@@ -37,33 +37,32 @@ Kod: `apps/api/src/routes/{days,stats,auth,me,health}.ts`. Reguły dnia: `apps/a
   (Postgres 17 service container). Zielone.
 - Instrukcje deployu/backupu (kroki właściciela): **`docs/DEPLOY.md`**.
 
-### Frontend — FUNDAMENT (FE-1…FE-5, na `main`)
-- Auth UI: `routes/login-page.tsx`, `register-page.tsx`, `guards.tsx` (`ProtectedRoute`/`PublicOnlyRoute`),
-  `App.tsx` (routing), `components/app-shell.tsx`, `components/states.tsx` (stany UI), `styles.css` (design tokens).
-- Klient auth: `lib/auth-client.ts` (`authClient`, `useSession`, `SessionUser`), `lib/auth-errors.ts`.
-- `routes/home-page.tsx` — **placeholder** po zalogowaniu („widoki dziennika dojdą w kolejnej fazie").
+### Frontend — KOMPLETNY (FE-1…FE-13, na `main`)
+- **Auth (FE-1…5):** `routes/{login,register}-page.tsx`, `guards.tsx`, `App.tsx`, `components/{app-shell,states}.tsx`,
+  `styles.css`, `lib/{auth-client,auth-errors}.ts`.
+- **Klient API dnia:** `lib/api.ts` — `getToday`/`createDay`/`updateMorning`/`submitEvening`/`getHistory`/`getDayByDate`/`getStreak`,
+  walidacja odpowiedzi schematami z `@trzy-cele/shared`; `ApiRequestError` (kod/status) vs surowy rzut sieci.
+- **Widoki dziennika (FE-6…13):**
+  - FE-9 HUB `routes/today-page.tsx` (routing pod-stanów null/evening_pending/closed; pod-tryby view/edit/evening),
+  - FE-7 `routes/morning-form.tsx` (poranek + edycja przez reuse), FE-8 `routes/evening-form.tsx` (jawny wybór 3 celów + licznik),
+  - FE-10/13 `routes/history-page.tsx` (lista + keyset) + `routes/history-day-page.tsx` (szczegół na trasie `/historia/:date`),
+  - FE-11 `components/streak-refresh.tsx` + StreakBadge (odświeżany po zamknięciu dnia),
+  - `components/day-readonly.tsx` (reuse podglądu closed HUB↔historia), FE-6 nawigacja + wspólny `LogoutButton` w AppShell.
 
 ## Co ZOSTAŁO
 
-### Frontend — widoki dziennika (FE-6…FE-12) — GŁÓWNE ZADANIE
-Wszystkie „→ po BE-x" mają już backend gotowy. Nie istnieje jeszcze **żaden klient API dnia**
-(tylko auth) — trzeba go dodać (`apps/web/src/lib/` — np. `api.ts` uderzający w `/api/days*`, `/api/stats/streak`).
-
-| # | Widok | Endpoint(y) | Kontrakt |
-|---|---|---|---|
-| FE-6 | Layout + nawigacja (dziś/historia), responsywny | — | — |
-| FE-7 | „Rano": formularz 1 główny + 2 poboczne + notatki | `POST /days` (+ `PATCH /days/today` do edycji) | `morningEntrySchema` |
-| FE-8 | „Wieczór": odznaczanie 3 celów + notatka | `POST /days/today/evening` | `eveningEntrySchema` (`goals[].id` z dnia!) |
-| FE-9 | Widok dnia dzisiejszego (kieruje do akcji) | `GET /days/today` | `dayResponseSchema` (`day===null` → „wypełnij rano") |
-| FE-10 | Historia + podgląd dnia | `GET /days/history` + `GET /days/:date` | `dayHistorySchema` / `dayResponseSchema` |
-| FE-11 | Licznik/seria | `GET /stats/streak` | `streakSchema` |
-| FE-12 | Dopracowanie stanów (ładowanie/pusto/błąd/walidacja) | — | reuse `components/states.tsx` |
-
 ### Owner-gated (poza kodem, robi właściciel — patrz `docs/DEPLOY.md`)
-- **Deploy:** konto Render + Blueprint + 4 sekrety. (Do używania poza localhostem; lokalnie FE działa bez tego.)
-- **Backup:** sekret `BACKUP_DATABASE_URL` + testowy restore.
+- **Deploy (Render):** konto + Blueprint + 4 sekrety. (Do używania poza localhostem; lokalnie działa bez tego.)
+- **Backup (Neon):** sekret `BACKUP_DATABASE_URL` + **testowy restore** (= kryterium „done" backupu).
+- **Smoke test na prodzie** po deployu (health + pełny rytuał `curl`-em) — testuje to, czego CI nie sprawdza (cold start, Secure cookies).
 
-**Faza 1 domyka się**, gdy FE-6…12 są gotowe i pełny rytuał (rano→wieczór→historia→streak) da się przeklikać E2E.
+### Drobiazgi / dług techniczny (nieblokujące) — patrz `docs/backlog_mvp.md`
+- Kody błędów API → wspólny `z.enum`/stałe w `packages/shared/src/error.ts`.
+- FE: powrót fokusu dla błędów spoza tytułów (NIT-5).
+- Edge stref czasowych (przesunięcie wstecz) — obserwacja dla @sa.
+
+**Formalne zamknięcie Fazy 1 wg @sa** = pełny rytuał (rano→wieczór→historia→streak) przeklikany E2E **na prodzie**
++ zweryfikowany restore backupu. Kod jest gotowy; brakuje tylko akcji właściciela (deploy + sekrety).
 
 ## Jak uruchomić lokalnie (dev)
 
