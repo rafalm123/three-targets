@@ -77,3 +77,7 @@ Restore uznajemy za zaliczony, gdy tabele i wiersze są na miejscu. Dopiero wted
 - Artifacts wygasają po 30 dniach — dla 1 usera akceptowalne. Jeśli potrzebna trwalsza retencja:
   upload do bucketu (koszt/konto) albo dłuższy `retention-days`. Świadomie MVP.
 - `pg_dump` idzie połączeniem bezpośrednim (nie pooler) — spójnie z `migrate deploy`.
+- ⚠️ **Cicha śmierć crona:** GitHub **wyłącza harmonogram po 60 dniach bezczynności repo**, a o failu
+  crona powiadamia mailem tylko autora ostatniej zmiany w workflow. Dla projektu, który może „leżeć"
+  po MVP, to realne ryzyko (cron off → za 30 dni ostatni artifact wygasa → zero backupów). Mitigacja:
+  co jakiś czas wejść w *Actions* i sprawdzić/odpalić ręcznie, albo commit ożywiający repo.

@@ -11,6 +11,10 @@ on:
     - cron: '0 2 * * *' # 02:00 UTC codziennie
   workflow_dispatch: {}
 
+# Least-privilege: backup tylko czyta repo, nie potrzebuje write na GITHUB_TOKEN.
+permissions:
+  contents: read
+
 # Nie odpalaj równolegle wielu backupów (nakładające się crony / ręczne triggery).
 concurrency:
   group: db-backup
