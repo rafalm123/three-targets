@@ -30,7 +30,7 @@ wieczorem oznaczyć co dowiózł → przeglądać historię poprzednich dni → 
 | FND-4 | Baza w chmurze + połączenie | Baza (Neon) założona, aplikacja się łączy, dane połączenia jako sekret (nie w repo). (wymaga kont) |
 | FND-5 | CI (lint + build + test) + harness testów | Na każdy push: lint, build, testy. Testy integracyjne z bazą: w CI Postgres jako **service container GitHub Actions** (nie docker-compose), z tej samej wersji obrazu co lokalnie. Czerwony pipeline blokuje merge. |
 | FND-6 | Deploy: jeden kontener (API + statyk SPA) | Aplikacja wdrożona na **Render (free)** jako jeden kontener serwujący `/api/*` i statyczną SPA; sekrety/zmienne ustawione w środowisku. (wymaga kont) → po BE-8 |
-| FND-7 | Backup bazy | Cykliczny (np. tygodniowy) `pg_dump` z crona GitHub Actions do prywatnego storage'u. Dane dziennika są niereprodukowalne → to polisa. |
+| FND-7 | Backup bazy | Cron GitHub Actions (`.github/workflows/backup.yml`): codzienny `pg_dump` (format custom, `postgres:17`) → artifact (retencja 30 dni, zero kosztu) + ręczny trigger. Sekret `BACKUP_DATABASE_URL` (bezpośredni Neon) dodaje właściciel. **„Done" = udany testowy restore** (nie sam cron; procedura w `docs/DEPLOY.md`). Dane dziennika niereprodukowalne → polisa. |
 
 ## 🟦 Tor B — Backend fundament
 | # | Task | Definition of Done |

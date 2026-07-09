@@ -42,3 +42,42 @@ Weryfikujemy to, czego CI nie sprawdza: cold start, Secure/same-origin cookies w
 - **Backup (FND-7):** wykonać **zaraz po** deployu i **przed** pierwszym realnym wpisem; „done" = udany
   testowy restore z dumpa (nie sam cron).
 - **Portowalność:** `render.yaml` to wygoda, nie lock-in — ten sam obraz stanie na VPS/Fly (zmiana hostingu = konfiguracja, nie kod).
+
+## Backup i restore (FND-7)
+
+Workflow [`.github/workflows/backup.yml`](../.github/workflows/backup.yml): `pg_dump` (format custom, `postgres:17`)
+codziennie o 02:00 UTC + ręcznie (*Actions → DB Backup → Run workflow*). Dump ląduje jako **artifact**
+(retencja 30 dni, zero kosztu). Kolejność wg @sa: **po** deployu, **przed** pierwszym realnym wpisem.
+
+### Krok właściciela (jednorazowo)
+
+Dodaj sekret repo (*Settings → Secrets and variables → Actions → New repository secret*):
+- `BACKUP_DATABASE_URL` — **bezpośredni** (unpooled) connection string Neona (host **bez** `-pooler`,
+  `?sslmode=require`). Może być ten sam co `DIRECT_URL` z deployu.
+
+Potem odpal workflow ręcznie raz, by potwierdzić, że dump się tworzy.
+
+### „Done" = testowy restore (nie sam cron!)
+
+Pobierz artifact z uruchomienia workflow i odtwórz do **pustej** bazy (np. lokalny Postgres 17 albo
+świeża baza Neon), weryfikując że dane wracają:
+
+```bash
+# lokalny Postgres 17 (docker-compose już go daje):
+createdb -h localhost -U <user> restore_test    # lub: psql ... -c 'CREATE DATABASE restore_test;'
+pg_restore --clean --if-exists --no-owner --no-privileges \
+  -d "postgresql://<user>:<pass>@localhost:5432/restore_test" backup-<STAMP>.dump
+psql "...restore_test" -c '\dt'                  # tabele Better Auth + days/goals obecne?
+```
+
+Restore uznajemy za zaliczony, gdy tabele i wiersze są na miejscu. Dopiero wtedy FND-7 jest „done".
+
+### Uwagi
+
+- Artifacts wygasają po 30 dniach — dla 1 usera akceptowalne. Jeśli potrzebna trwalsza retencja:
+  upload do bucketu (koszt/konto) albo dłuższy `retention-days`. Świadomie MVP.
+- `pg_dump` idzie połączeniem bezpośrednim (nie pooler) — spójnie z `migrate deploy`.
+- ⚠️ **Cicha śmierć crona:** GitHub **wyłącza harmonogram po 60 dniach bezczynności repo**, a o failu
+  crona powiadamia mailem tylko autora ostatniej zmiany w workflow. Dla projektu, który może „leżeć"
+  po MVP, to realne ryzyko (cron off → za 30 dni ostatni artifact wygasa → zero backupów). Mitigacja:
+  co jakiś czas wejść w *Actions* i sprawdzić/odpalić ręcznie, albo commit ożywiający repo.
