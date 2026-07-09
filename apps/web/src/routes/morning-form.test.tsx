@@ -159,6 +159,20 @@ describe('MorningForm — tryb edycji (BE-11)', () => {
     expect(onSuccess).toHaveBeenCalled();
   });
 
+  it('prefill wypełnia notatki celów pobocznych z dnia', () => {
+    const day = existingDay();
+    day.goals[1] = { ...day.goals[1]!, note: 'notatka A' };
+    day.goals[2] = { ...day.goals[2]!, note: 'notatka B' };
+    render(<MorningForm initialDay={day} onSubmit={vi.fn()} onSuccess={vi.fn()} />);
+
+    expect(
+      screen.getByLabelText('Notatka (opcjonalnie)', { selector: '#sec-0-note' }),
+    ).toHaveProperty('value', 'notatka A');
+    expect(
+      screen.getByLabelText('Notatka (opcjonalnie)', { selector: '#sec-1-note' }),
+    ).toHaveProperty('value', 'notatka B');
+  });
+
   it('409 DAY_ALREADY_CLOSED w edycji → onConflict', async () => {
     const day = existingDay();
     const updateMorning = vi

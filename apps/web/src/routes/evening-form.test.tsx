@@ -52,13 +52,28 @@ describe('EveningForm (FE-8)', () => {
     expect(screen.getByText(/Poboczny B/)).toBeTruthy();
   });
 
-  it('brak wyboru dowieziony/nie → komunikat, brak wywołania API', async () => {
+  it('dopóki nie wszystkie cele ocenione → przycisk disabled + licznik ile zostało', async () => {
     const user = userEvent.setup();
     renderForm();
-    await user.click(screen.getByRole('button', { name: 'Zamknij dzień' }));
-    await waitFor(() =>
-      expect(screen.getByText('Zaznacz przy każdym celu, czy został dowieziony.')).toBeTruthy(),
-    );
+    const submit = screen.getByRole('button', { name: 'Zamknij dzień' });
+    // Start: 3 cele nieocenione — disabled + „Oceń jeszcze 3 cele".
+    expect(submit).toHaveProperty('disabled', true);
+    expect(screen.getByText('Oceń jeszcze 3 cele, aby zamknąć dzień.')).toBeTruthy();
+
+    // Oceń jeden → licznik spada do 2, wciąż disabled.
+    await user.click(screen.getAllByRole('radio', { name: 'Dowiezione' })[0]!);
+    expect(screen.getByText('Oceń jeszcze 2 cele, aby zamknąć dzień.')).toBeTruthy();
+    expect(submit).toHaveProperty('disabled', true);
+
+    // Oceń drugi → licznik „1 cel" (odmiana), wciąż disabled.
+    await user.click(screen.getAllByRole('radio', { name: 'Niedowiezione' })[1]!);
+    expect(screen.getByText('Oceń jeszcze 1 cel, aby zamknąć dzień.')).toBeTruthy();
+    expect(submit).toHaveProperty('disabled', true);
+
+    // Oceń trzeci → licznik znika, przycisk aktywny.
+    await user.click(screen.getAllByRole('radio', { name: 'Dowiezione' })[2]!);
+    expect(screen.queryByText(/Oceń jeszcze/)).toBeNull();
+    expect(submit).toHaveProperty('disabled', false);
     expect(submitEvening).not.toHaveBeenCalled();
   });
 
@@ -80,6 +95,30 @@ describe('EveningForm (FE-8)', () => {
       ],
     });
     expect(onClosed).toHaveBeenCalledWith(closed);
+  });
+
+  it('notatki celów i wieczorna po trim trafiają do payloadu', async () => {
+    const closed = { ...pendingDay(), status: 'closed' as const };
+    submitEvening.mockResolvedValue(closed);
+    const user = userEvent.setup();
+    renderForm();
+    await markAllDone(user);
+
+    // completedNote dla pierwszego celu (główny) + eveningNote — z otaczającymi spacjami.
+    const noteInputs = screen.getAllByLabelText('Notatka (opcjonalnie)');
+    await user.type(noteInputs[0]!, '  szło dobrze  ');
+    await user.type(screen.getByLabelText('Notatka wieczorna (opcjonalnie)'), '  podsumowanie  ');
+    await user.click(screen.getByRole('button', { name: 'Zamknij dzień' }));
+
+    await waitFor(() => expect(submitEvening).toHaveBeenCalledTimes(1));
+    expect(submitEvening).toHaveBeenCalledWith({
+      goals: [
+        { id: 'g-main', completed: true, completedNote: 'szło dobrze' },
+        { id: 'g-s1', completed: true },
+        { id: 'g-s2', completed: true },
+      ],
+      eveningNote: 'podsumowanie',
+    });
   });
 
   it('409 DAY_ALREADY_CLOSED → onConflict (nie pokazuje błędu)', async () => {
