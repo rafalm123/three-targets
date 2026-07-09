@@ -5,12 +5,13 @@
 
 ## TL;DR
 
-- **Faza 1 (MVP) — FUNKCJONALNIE KOMPLETNA na `main`.** Backend (BE-3…17) + Frontend (FE-1…13) gotowe.
-  Pełny rytuał **rano → edycja → wieczór → historia → streak** klikalny end-to-end (lokalnie).
-  Testy zielone: shared 15 + api 35 (w tym integracja na realnym Postgresie) + web 77 = **127**.
-- **Zostaje owner-gated (poza kodem):** faktyczny **deploy** (Render) + **backup** (sekret Neona + testowy
-  restore) — patrz `docs/DEPLOY.md`. Formalne zamknięcie Fazy 1 wg @sa = przeklikany rytuał E2E **na prodzie**.
-- Drobiazgi/dług: patrz `docs/backlog_mvp.md` (sekcja „Dług techniczny": kody błędów → z.enum, fokus NIT-5).
+- **Faza 1 (MVP) — DOMKNIĘTA I WDROŻONA NA PRODUKCJI** → **https://trzy-cele.onrender.com**
+  (Render free, jeden kontener API+SPA, Neon PG18). Smoke test E2E na prodzie przeszedł komplet
+  (rejestracja → poranek → wieczór → historia → streak) = kryterium zamknięcia wg @sa.
+- Backend (BE-3…17) + Frontend (FE-1…13), testy: shared 15 + api 35 (integracja na Postgresie) + web 77 = **127**.
+- **Pełny rejestr tego, co zbudowaliśmy:** `docs/PHASE1_SUMMARY.md`. Wdrożenie/backup: `docs/DEPLOY.md`.
+- **Zostaje (nieblokujące):** testowy restore backupu (FND-7 „done"), rotacja hasła Neona, sprzątnięcie konta
+  `smoke-*@test.local`, dług techniczny (`docs/backlog_mvp.md`).
 
 ## Co jest ZROBIONE (na `main`, zweryfikowane)
 
