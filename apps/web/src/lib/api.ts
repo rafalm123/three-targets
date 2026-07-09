@@ -5,6 +5,7 @@ import {
   streakSchema,
   type Day,
   type DayResponse,
+  type EveningEntry,
   type MorningEntry,
   type Streak,
 } from '@trzy-cele/shared';
@@ -97,6 +98,38 @@ export async function getToday(): Promise<DayResponse> {
  */
 export async function createDay(entry: MorningEntry): Promise<Day> {
   const response = await fetch('/api/days', {
+    method: 'POST',
+    headers: { ...JSON_HEADERS, Accept: 'application/json' },
+    body: JSON.stringify(entry),
+  });
+  if (!response.ok) throw await readApiError(response);
+  return parseOk(daySchema, await response.json(), response.status);
+}
+
+/**
+ * PATCH /api/days/today — edycja porannego wpisu (**pełne zastąpienie**, nie merge). Wysyłamy
+ * komplet 1 główny + 2 poboczne + `morningNote`; pominięte opcjonalne pola serwer ustawi na null.
+ * Zwraca *goły* `Day` (200). Błędy: 409 `DAY_ALREADY_CLOSED` (zamknięty w międzyczasie),
+ * 404 `NO_DAY_TODAY` → `ApiRequestError` z odpowiednim `code` (UI przeładuje HUB).
+ */
+export async function updateMorning(entry: MorningEntry): Promise<Day> {
+  const response = await fetch('/api/days/today', {
+    method: 'PATCH',
+    headers: { ...JSON_HEADERS, Accept: 'application/json' },
+    body: JSON.stringify(entry),
+  });
+  if (!response.ok) throw await readApiError(response);
+  return parseOk(daySchema, await response.json(), response.status);
+}
+
+/**
+ * POST /api/days/today/evening — wieczorne odznaczenie (dzień → `closed`). `goals` to DOKŁADNIE
+ * 3 obiekty `{id, completed, completedNote?}`, gdzie `id` = id celów z pobranego dnia (nie wymyślać).
+ * Zwraca *goły* `Day` (200). Błędy: 409 `DAY_ALREADY_CLOSED`, 400 `GOAL_MISMATCH` (złe/niepełne id),
+ * 404 `NO_DAY_TODAY` → `ApiRequestError` z `code` (UI reaguje / przeładuje HUB).
+ */
+export async function submitEvening(entry: EveningEntry): Promise<Day> {
+  const response = await fetch('/api/days/today/evening', {
     method: 'POST',
     headers: { ...JSON_HEADERS, Accept: 'application/json' },
     body: JSON.stringify(entry),
