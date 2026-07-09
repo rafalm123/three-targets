@@ -1,10 +1,10 @@
-import type { Day, Goal } from '@trzy-cele/shared';
+import type { Day } from '@trzy-cele/shared';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { AppShell } from '../components/app-shell';
+import { DayReadonlyView, GoalCard } from '../components/day-readonly';
 import { EmptyState, ErrorState, LoadingState } from '../components/states';
 import { getToday, updateMorning } from '../lib/api';
-import { authClient, useSession } from '../lib/auth-client';
-import { authErrorMessage, GENERIC_AUTH_ERROR } from '../lib/auth-errors';
+import { useSession } from '../lib/auth-client';
 import { EveningForm } from './evening-form';
 import { MorningForm } from './morning-form';
 
@@ -18,7 +18,7 @@ import { MorningForm } from './morning-form';
  * Przy `evening_pending` HUB ma trzy pod-tryby lokalne: `view` (domyślny), `edit` (edycja poranna),
  * `evening` (odznaczanie wieczorne). Wszystkie operują na tym samym pobranym dniu; sukces mutacji
  * podmienia dzień w stanie bez ponownego fetcha, a konflikt (dzień zamknięty/zniknął w międzyczasie)
- * przeładowuje HUB.
+ * przeładowuje HUB. Wyloguj/streak żyją w AppShell (globalny chrome), nie tutaj.
  */
 
 type LoadState =
@@ -33,9 +33,6 @@ export function TodayPage(): ReactNode {
   const { data: session } = useSession();
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [notice, setNotice] = useState<string | null>(null);
-
-  const [signingOut, setSigningOut] = useState(false);
-  const [signOutError, setSignOutError] = useState<string | null>(null);
 
   const load = useCallback(async (): Promise<void> => {
     setState({ kind: 'loading' });
@@ -62,38 +59,8 @@ export function TodayPage(): ReactNode {
     [load],
   );
 
-  async function handleSignOut(): Promise<void> {
-    setSignOutError(null);
-    setSigningOut(true);
-    try {
-      const { error } = await authClient.signOut();
-      if (error) setSignOutError(authErrorMessage(error));
-    } catch {
-      setSignOutError(GENERIC_AUTH_ERROR);
-    } finally {
-      setSigningOut(false);
-    }
-  }
-
-  const logoutButton = (
-    <button
-      type="button"
-      className="button button-secondary"
-      onClick={handleSignOut}
-      disabled={signingOut}
-    >
-      {signingOut ? 'Wylogowywanie…' : 'Wyloguj'}
-    </button>
-  );
-
   return (
-    <AppShell headerActions={logoutButton} showNav>
-      {signOutError ? (
-        <div className="form-error" role="alert">
-          {signOutError}
-        </div>
-      ) : null}
-
+    <AppShell showNav>
       {notice ? (
         <div className="form-error" role="alert">
           {notice}
@@ -247,9 +214,6 @@ function PendingDay({
 
 /** Widok dnia `closed`: podsumowanie read-only (cele z oznaczeniami + notatki). */
 function ClosedDay({ day, userName }: { day: Day; userName?: string }): ReactNode {
-  const main = day.goals.find((g) => g.kind === 'main');
-  const secondary = day.goals.filter((g) => g.kind === 'secondary');
-
   return (
     <section className="day-view" aria-label="Dzisiejszy dzień">
       <header className="day-view-header">
@@ -257,54 +221,13 @@ function ClosedDay({ day, userName }: { day: Day; userName?: string }): ReactNod
         <span className="day-badge day-badge-closed">Dzień zamknięty</span>
       </header>
 
-      {main ? <GoalCard goal={main} primary /> : null}
-      {secondary.map((g) => (
-        <GoalCard key={g.id} goal={g} />
-      ))}
-
-      {day.morningNote ? (
-        <div className="day-note">
-          <span className="day-note-label">Notatka poranna</span>
-          <p>{day.morningNote}</p>
-        </div>
-      ) : null}
-
-      {day.eveningNote ? (
-        <div className="day-note">
-          <span className="day-note-label">Notatka wieczorna</span>
-          <p>{day.eveningNote}</p>
-        </div>
-      ) : null}
+      <DayReadonlyView day={day} />
 
       <EmptyState
         title="Dzień zamknięty"
         message="Ten dzień jest już podsumowany i tylko do odczytu."
       />
     </section>
-  );
-}
-
-/** Pojedynczy cel: tytuł, notatka i (po oznaczeniu wieczorem) status dowiezienia. */
-function GoalCard({ goal, primary = false }: { goal: Goal; primary?: boolean }): ReactNode {
-  const mark =
-    goal.completed === null
-      ? null
-      : goal.completed
-        ? { label: 'Dowiezione', cls: 'goal-mark-done' }
-        : { label: 'Niedowiezione', cls: 'goal-mark-missed' };
-
-  return (
-    <article className={`goal-card${primary ? ' goal-card-primary' : ''}`}>
-      <div className="goal-card-head">
-        <span className="goal-kind">{primary ? 'Główny' : 'Poboczny'}</span>
-        {mark ? <span className={`goal-mark ${mark.cls}`}>{mark.label}</span> : null}
-      </div>
-      <h3 className="goal-title">{goal.title}</h3>
-      {goal.note ? <p className="goal-note">{goal.note}</p> : null}
-      {goal.completedNote ? (
-        <p className="goal-note goal-note-completed">{goal.completedNote}</p>
-      ) : null}
-    </article>
   );
 }
 

@@ -63,6 +63,34 @@ a {
   margin: 0;
 }
 
+.app-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* --- Wskaźnik serii (FE-11) --- */
+.streak-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.625rem;
+  font-size: 0.9375rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-bg);
+}
+
+.streak-badge strong {
+  color: var(--color-text);
+}
+
+/* Błąd wylogowania — pod przyciskiem w headerze, pełna szerokość paska akcji. */
+.logout-error {
+  flex-basis: 100%;
+}
+
 .app-main {
   flex: 1;
   width: 100%;
@@ -426,4 +454,91 @@ a {
   .spinner {
     animation-duration: 2s;
   }
+}
+
+/* --- Historia (FE-10) --- */
+.page-title {
+  margin: 0 0 var(--space-2);
+}
+
+.history-list {
+  list-style: none;
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.history-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  width: 100%;
+  padding: var(--space-2);
+  text-align: left;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.history-row:hover {
+  border-color: var(--color-primary);
+}
+
+.history-row:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.history-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+}
+
+.history-date {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-muted);
+}
+
+.history-main-title {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.history-flags {
+  display: inline-flex;
+  gap: 0.375rem;
+}
+
+.history-flag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  border-radius: 50%;
+}
+
+.history-flag-done {
+  color: var(--color-success);
+  background: var(--color-success-bg);
+}
+
+.history-flag-missed {
+  color: var(--color-error);
+  background: var(--color-error-bg);
+}
+
+.history-flag-none {
+  color: var(--color-muted);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
 }

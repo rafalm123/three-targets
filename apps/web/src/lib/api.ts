@@ -1,9 +1,11 @@
 import {
   apiErrorSchema,
+  dayHistorySchema,
   dayResponseSchema,
   daySchema,
   streakSchema,
   type Day,
+  type DayHistory,
   type DayResponse,
   type EveningEntry,
   type MorningEntry,
@@ -143,4 +145,32 @@ export async function getStreak(): Promise<Streak> {
   const response = await fetch('/api/stats/streak', { headers: { Accept: 'application/json' } });
   if (!response.ok) throw await readApiError(response);
   return parseOk(streakSchema, await response.json(), response.status);
+}
+
+/**
+ * GET /api/days/history — historia dni (bez „dziś", bez pełnych notatek). Stronicowanie keyset:
+ * `before` = kursor (data z `nextCursor` poprzedniej strony) → starsza strona; brak `before` =
+ * najnowsza strona. Zwraca `{ items: DaySummary[], nextCursor }`; `nextCursor === null` = koniec.
+ */
+export async function getHistory(before?: string, limit?: number): Promise<DayHistory> {
+  const params = new URLSearchParams();
+  if (before) params.set('before', before);
+  if (limit !== undefined) params.set('limit', String(limit));
+  const query = params.toString();
+  const response = await fetch(`/api/days/history${query ? `?${query}` : ''}`, {
+    headers: { Accept: 'application/json' },
+  });
+  if (!response.ok) throw await readApiError(response);
+  return parseOk(dayHistorySchema, await response.json(), response.status);
+}
+
+/**
+ * GET /api/days/:date — pełny dzień po dacie (`YYYY-MM-DD`, `date ≤ dziś`) do podglądu z historii.
+ * Read-only, z notatkami/celami. Zwraca `{ day: Day | null }` (brak wpisu na tę datę → `null`).
+ * 400 `FUTURE_DATE`/walidacja → `ApiRequestError` (nie powinno wystąpić — daty bierzemy z historii).
+ */
+export async function getDayByDate(date: string): Promise<DayResponse> {
+  const response = await fetch(`/api/days/${date}`, { headers: { Accept: 'application/json' } });
+  if (!response.ok) throw await readApiError(response);
+  return parseOk(dayResponseSchema, await response.json(), response.status);
 }

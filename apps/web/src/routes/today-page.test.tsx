@@ -8,9 +8,12 @@ import { TodayPage } from './today-page';
 // Mockujemy klienta API dnia i sesję — testujemy routing pod-stanów HUB, nie sieć/auth.
 const getToday = vi.fn();
 const updateMorning = vi.fn();
+// getStreak używa StreakBadge w AppShell (globalny chrome) — zwracamy pending promise, by badge
+// pozostał w stanie „miękkiej degradacji" (null) i nie mieszał w asercjach HUB.
 vi.mock('../lib/api', () => ({
   getToday: (...a: unknown[]) => getToday(...a) as unknown,
   updateMorning: (...a: unknown[]) => updateMorning(...a) as unknown,
+  getStreak: () => new Promise(() => {}),
 }));
 vi.mock('../lib/auth-client', () => ({
   authClient: { signOut: vi.fn() },

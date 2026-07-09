@@ -1,13 +1,20 @@
 import type { ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
+import { StreakBadge } from './streak-badge';
+import { LogoutButton } from './logout-button';
 
 /**
- * Szkielet layoutu aplikacji (FE-5, rozszerzony w FE-6): nagłówek + opcjonalna nawigacja + treść.
+ * Szkielet layoutu aplikacji (FE-5, rozszerzony FE-6/FE-11/FE-12): nagłówek + opcjonalna
+ * nawigacja + treść.
  *
- * Reużywalny shell dla widoków za loginem. `headerActions` wstrzykuje akcje kontekstowe (np.
- * wylogowanie) bez sprzęgania shella z auth. `showNav` włącza nawigację Dziś/Historia — ekrany
- * auth (login/rejestracja) jej NIE pokazują (użytkownik niezalogowany), więc domyślnie wyłączona.
+ * `showNav` = ekran za loginem → shell sam dokłada globalny chrome: wskaźnik serii (`StreakBadge`)
+ * i przycisk „Wyloguj" (`LogoutButton`). Dzięki temu logout i streak są spójne na WSZYSTKICH
+ * trasach za loginem (Dziś/Historia) — bez duplikowania logiki w każdym widoku (FE-12/NIT-1).
+ * Ekrany auth (login/rejestracja) mają `showNav=false` → brak nawigacji, logoutu i streaka.
+ *
+ * `headerActions` pozwala widokowi dołożyć własne akcje kontekstowe obok globalnych.
  */
+
 /** react-router v7 nie dokłada klasy `active` przy stringowym `className` — dajemy ją jawnie. */
 function navLinkClass({ isActive }: { isActive: boolean }): string {
   return isActive ? 'app-nav-link active' : 'app-nav-link';
@@ -26,7 +33,11 @@ export function AppShell({
     <div className="app-shell">
       <header className="app-header">
         <h1>Trzy Cele</h1>
-        {headerActions ? <div>{headerActions}</div> : null}
+        <div className="app-header-actions">
+          {showNav ? <StreakBadge /> : null}
+          {headerActions}
+          {showNav ? <LogoutButton /> : null}
+        </div>
       </header>
       {showNav ? (
         <nav className="app-nav" aria-label="Główna nawigacja">

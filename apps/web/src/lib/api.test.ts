@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ApiRequestError,
   createDay,
+  getDayByDate,
+  getHistory,
   getStreak,
   getToday,
   submitEvening,
@@ -178,5 +180,59 @@ describe('getStreak', () => {
     );
     const streak = await getStreak();
     expect(streak.current).toBe(3);
+  });
+});
+
+const SUMMARY = {
+  date: '2026-07-08',
+  status: 'closed' as const,
+  mainTitle: 'Główny wczoraj',
+  goalsCompleted: [true, false, null],
+};
+
+describe('getHistory', () => {
+  it('happy path: bez kursora → najnowsza strona, waliduje { items, nextCursor }', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ items: [SUMMARY], nextCursor: '2026-07-08' }));
+    const result = await getHistory();
+    expect(result.items).toHaveLength(1);
+    expect(result.nextCursor).toBe('2026-07-08');
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe('/api/days/history');
+  });
+
+  it('paginacja: przekazuje ?before= i limit w query', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ items: [], nextCursor: null }));
+    await getHistory('2026-07-05', 10);
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toContain('before=2026-07-05');
+    expect(url).toContain('limit=10');
+  });
+
+  it('błąd HTTP → ApiRequestError', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ error: { message: 'boom' } }, { ok: false, status: 500 }));
+    await expect(getHistory()).rejects.toBeInstanceOf(ApiRequestError);
+  });
+});
+
+describe('getDayByDate', () => {
+  it('happy path: GET /api/days/:date, zwraca { day }', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ day: CLOSED_DAY }));
+    const result = await getDayByDate('2026-07-08');
+    expect(result.day?.status).toBe('closed');
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe('/api/days/2026-07-08');
+  });
+
+  it('brak wpisu na datę → { day: null }', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ day: null }));
+    const result = await getDayByDate('2026-07-01');
+    expect(result.day).toBeNull();
+  });
+
+  it('błąd HTTP → ApiRequestError', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({ error: { message: 'zła data', code: 'FUTURE_DATE' } }, { ok: false, status: 400 }),
+    );
+    await expect(getDayByDate('2030-01-01')).rejects.toMatchObject({ code: 'FUTURE_DATE' });
   });
 });
