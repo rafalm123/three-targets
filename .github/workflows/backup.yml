@@ -1,0 +1,47 @@
+name: DB Backup (Neon)
+
+# FND-7 — backup bazy Neona. Cron (codziennie) + ręczne uruchomienie (workflow_dispatch).
+# pg_dump w formacie custom (pg_restore-owalny) → artifact GitHub Actions (zero kosztu, retencja 30 dni).
+# Wymaga sekretu BACKUP_DATABASE_URL = BEZPOŚREDNI (unpooled) connection string Neona
+#   (host bez `-pooler`, ?sslmode=require) — pg_dump nie powinien iść przez pooler.
+# „Done" backupu (decyzja @sa) = udany TESTOWY RESTORE z dumpa; instrukcja w docs/DEPLOY.md.
+
+on:
+  schedule:
+    - cron: '0 2 * * *' # 02:00 UTC codziennie
+  workflow_dispatch: {}
+
+# Nie odpalaj równolegle wielu backupów (nakładające się crony / ręczne triggery).
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: pg_dump (postgres:17, format custom)
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BACKUP_DATABASE_URL:-}" ]; then
+            echo "::error::Brak sekretu BACKUP_DATABASE_URL (Settings → Secrets → Actions). Patrz docs/DEPLOY.md."
+            exit 1
+          fi
+          STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+          echo "STAMP=$STAMP" >> "$GITHUB_ENV"
+          # Obraz postgres:17 == wersja bazy Neona → zgodność pg_dump/pg_restore.
+          docker run --rm postgres:17 \
+            pg_dump --no-owner --no-privileges --format=custom "$BACKUP_DATABASE_URL" \
+            > "backup-$STAMP.dump"
+          ls -lh "backup-$STAMP.dump"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ env.STAMP }}
+          path: backup-*.dump
+          retention-days: 30
+          if-no-files-found: error
