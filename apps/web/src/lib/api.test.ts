@@ -6,6 +6,7 @@ import {
   getHistory,
   getStreak,
   getToday,
+  resetStreak,
   submitEvening,
   updateMorning,
 } from './api';
@@ -183,6 +184,37 @@ describe('getStreak', () => {
   });
 });
 
+describe('resetStreak', () => {
+  it('happy path: POST /api/stats/streak/reset, zwraca zwalidowany Streak (current=0)', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({ current: 0, longest: 5, totalDays: 10, asOfDate: '2026-07-09' }),
+    );
+    const streak = await resetStreak();
+    expect(streak.current).toBe(0);
+    expect(streak.longest).toBe(5);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/stats/streak/reset');
+    expect(init.method).toBe('POST');
+  });
+
+  it('niezgodny kształt odpowiedzi OK → ApiRequestError (zerwany kontrakt)', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ nope: true }));
+    await expect(resetStreak()).rejects.toBeInstanceOf(ApiRequestError);
+  });
+
+  it('błąd HTTP → ApiRequestError', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({ error: { message: 'boom' } }, { ok: false, status: 500 }),
+    );
+    await expect(resetStreak()).rejects.toBeInstanceOf(ApiRequestError);
+  });
+
+  it('awaria sieci (fetch rzuca) → rzut przepuszczony, NIE ApiRequestError', async () => {
+    fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
+    await expect(resetStreak()).rejects.toBeInstanceOf(TypeError);
+  });
+});
+
 const SUMMARY = {
   date: '2026-07-08',
   status: 'closed' as const,
@@ -209,7 +241,9 @@ describe('getHistory', () => {
   });
 
   it('błąd HTTP → ApiRequestError', async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ error: { message: 'boom' } }, { ok: false, status: 500 }));
+    fetchMock.mockResolvedValue(
+      jsonResponse({ error: { message: 'boom' } }, { ok: false, status: 500 }),
+    );
     await expect(getHistory()).rejects.toBeInstanceOf(ApiRequestError);
   });
 });
@@ -231,7 +265,10 @@ describe('getDayByDate', () => {
 
   it('błąd HTTP → ApiRequestError', async () => {
     fetchMock.mockResolvedValue(
-      jsonResponse({ error: { message: 'zła data', code: 'FUTURE_DATE' } }, { ok: false, status: 400 }),
+      jsonResponse(
+        { error: { message: 'zła data', code: 'FUTURE_DATE' } },
+        { ok: false, status: 400 },
+      ),
     );
     await expect(getDayByDate('2030-01-01')).rejects.toMatchObject({ code: 'FUTURE_DATE' });
   });

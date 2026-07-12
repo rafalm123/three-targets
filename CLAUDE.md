@@ -106,9 +106,16 @@ PostgreSQL (Neon)
 - **`lifeline_usage`** *(poza MVP)* — `id, userId, yearMonth, dayId` — limit 1 koło/miesiąc.
 
 **Streak / licznik dni** liczymy z `days` (nie trzymamy w osobnym polu → brak rozjazdu).
-**Definicja serii (decyzja @sa):** maksymalny ciąg kolejnych dni kalendarzowych ze statusem `closed`, licząc wstecz
-od „dziś" (serwer, z `users.timezone`); dzień w toku (≠`closed`) nie zrywa serii. Mierzy *rytuał*, nie wynik —
-skuteczność zmierzą punkty (Faza 2). `GET /api/stats/streak` → `current / longest / totalDays / asOfDate`.
+**Definicja serii (decyzja @sa; zmiana BE-18):** maksymalny ciąg kolejnych dni kalendarzowych z **dowiezionym
+celem głównym** (dzień `closed` z celem `kind='main', completed=true`), licząc wstecz od „dziś" (serwer,
+z `users.timezone`). Cele poboczne bez znaczenia. Dzień `closed` bez dowiezionego głównego **nie liczy się** →
+naturalnie zrywa serię (luka w zbiorze dat). Reguła obejmuje wszystkie trzy metryki (`current/longest/totalDays`)
+i jest globalna (bez grandfatheringu — przeszłe dni mogą się przeliczyć). Dzień w toku (dziś jeszcze bez dowiezionego
+głównego) nie zrywa `current` (grace tylko dla „dziś"). Mierzy *dowieziony główny*, nie sam rytuał.
+**Reset (BE-20):** ręczny `POST /api/stats/streak/reset` zeruje `current` NATYCHMIAST (decyzja właściciela) —
+ustawia `user.streakResetDate = JUTRO` (floor dla `current`), więc dziś liczy się 0 nawet z dowiezionym głównym,
+a seria startuje od nowa dopiero od następnego dnia. Zeruje TYLKO `current`; `longest`/`totalDays` nietknięte.
+`GET /api/stats/streak` → `current / longest / totalDays / asOfDate`.
 
 ---
 

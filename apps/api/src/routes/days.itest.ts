@@ -215,25 +215,34 @@ describe('POST /api/days/today/evening (integracja API ↔ DB)', () => {
     expect(byId[g3.id].completed).toBe(true);
   });
 
-  it('ponowne zamknięcie zamkniętego dnia → 409 DAY_ALREADY_CLOSED', async () => {
+  // BE-19 — dzień „dziś" jest re-submitowalny po zamknięciu (mutowalność po dacie).
+  it('re-submit wieczoru dzisiejszego zamkniętego dnia → 200, nowe wyniki nadpisane', async () => {
     const cookie = await signUp();
     const day = await createMorning(cookie);
-    const marks = day.goals.map((g) => ({ id: g.id, completed: true }));
+    const [g1, g2, g3] = day.goals;
+    if (!g1 || !g2 || !g3) throw new Error('oczekiwano 3 celów');
     const first = await app.inject({
       method: 'POST',
       url: '/api/days/today/evening',
       headers: { cookie, 'content-type': 'application/json' },
-      payload: { goals: marks },
+      payload: { goals: [{ id: g1.id, completed: true }, { id: g2.id, completed: true }, { id: g3.id, completed: true }], eveningNote: 'pierwotny' },
     });
     expect(first.statusCode).toBe(200);
+    expect(first.json().status).toBe('closed');
+    // ponowny submit tego samego (dzisiejszego) dnia — zmienia wyniki i notatkę
     const again = await app.inject({
       method: 'POST',
       url: '/api/days/today/evening',
       headers: { cookie, 'content-type': 'application/json' },
-      payload: { goals: marks },
+      payload: { goals: [{ id: g1.id, completed: false }, { id: g2.id, completed: false }, { id: g3.id, completed: true }], eveningNote: 'poprawiony' },
     });
-    expect(again.statusCode).toBe(409);
-    expect(again.json().error.code).toBe('DAY_ALREADY_CLOSED');
+    expect(again.statusCode).toBe(200);
+    const closed = again.json();
+    expect(closed.status).toBe('closed');
+    expect(closed.eveningNote).toBe('poprawiony');
+    const byId = Object.fromEntries(closed.goals.map((g: { id: string }) => [g.id, g]));
+    expect(byId[g1.id].completed).toBe(false);
+    expect(byId[g3.id].completed).toBe(true);
   });
 
   it('oznaczenia nie pasujące do celów dnia → 400 GOAL_MISMATCH', async () => {
@@ -324,7 +333,8 @@ describe('PATCH /api/days/today (edycja poranna — integracja API ↔ DB)', () 
     ]);
   });
 
-  it('edycja po zamknięciu → 409 DAY_ALREADY_CLOSED (brak edycji wstecz)', async () => {
+  // BE-19 — edycja poranna dzisiejszego dnia działa także PO zamknięciu (mutowalność po dacie).
+  it('edycja poranna dzisiejszego zamkniętego dnia → 200 (dziś edytowalny mimo closed)', async () => {
     const cookie = await signUp();
     const day = await createMorning(cookie);
     const close = await app.inject({
@@ -334,14 +344,43 @@ describe('PATCH /api/days/today (edycja poranna — integracja API ↔ DB)', () 
       payload: { goals: day.goals.map((g) => ({ id: g.id, completed: true })) },
     });
     expect(close.statusCode).toBe(200);
+    expect(close.json().status).toBe('closed');
     const res = await app.inject({
       method: 'PATCH',
       url: '/api/days/today',
       headers: { cookie, 'content-type': 'application/json' },
-      payload: entry,
+      payload: { main: { title: 'Poprawiony główny' }, secondary: [{ title: 'A2' }, { title: 'B2' }], morningNote: 'edycja po zamknięciu' },
     });
-    expect(res.statusCode).toBe(409);
-    expect(res.json().error.code).toBe('DAY_ALREADY_CLOSED');
+    expect(res.statusCode).toBe(200);
+    const edited = res.json();
+    expect(edited.status).toBe('closed'); // edycja poranna nie zmienia statusu
+    expect(edited.morningNote).toBe('edycja po zamknięciu');
+    expect(edited.goals.find((g: { kind: string }) => g.kind === 'main').title).toBe('Poprawiony główny');
+  });
+
+  // BE-19 — przeszłość ZAMROŻONA: endpointy mutacji ładują tylko „dziś", więc dzień przeszły jest
+  // nieosiągalny. Seed przeszłego dnia (otwartego) nie ma dziś rekordu → PATCH/evening „dziś" → 404,
+  // a przeszły dzień pozostaje nietknięty.
+  it('dzień przeszły nietykalny: brak dnia „dziś" → mutacje 404, przeszły bez zmian', async () => {
+    const { cookie, userId } = await signUpWithId();
+    await seedDay(userId, '2021-04-01', { status: 'evening_pending', mainTitle: 'Przeszły otwarty', completed: [null, null, null] });
+
+    const patch = await app.inject({ method: 'PATCH', url: '/api/days/today', headers: { cookie, 'content-type': 'application/json' }, payload: entry });
+    expect(patch.statusCode).toBe(404);
+    expect(patch.json().error.code).toBe('NO_DAY_TODAY');
+
+    const evening = await app.inject({
+      method: 'POST',
+      url: '/api/days/today/evening',
+      headers: { cookie, 'content-type': 'application/json' },
+      payload: { goals: [{ id: 'x', completed: true }, { id: 'y', completed: true }, { id: 'z', completed: true }] },
+    });
+    expect(evening.statusCode).toBe(404);
+
+    // przeszły dzień nadal otwarty i nietknięty
+    const past = await app.inject({ method: 'GET', url: '/api/days/2021-04-01', headers: { cookie } });
+    expect(past.json().day.status).toBe('evening_pending');
+    expect(past.json().day.goals.find((g: { kind: string }) => g.kind === 'main').title).toBe('Przeszły otwarty');
   });
 
   it('replace (nie merge): PATCH bez pól opcjonalnych czyści morningNote i note celów do null', async () => {

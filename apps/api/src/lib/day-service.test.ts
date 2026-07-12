@@ -7,12 +7,10 @@ describe('checkDayMutable', () => {
   it('brak dnia → 404 NO_DAY_TODAY', () => {
     expect(checkDayMutable(null)).toMatchObject({ ok: false, status: 404, code: 'NO_DAY_TODAY' });
   });
-  it('dzień closed → 409 DAY_ALREADY_CLOSED (brak edycji wstecz)', () => {
-    expect(checkDayMutable({ status: 'closed' })).toMatchObject({
-      ok: false,
-      status: 409,
-      code: 'DAY_ALREADY_CLOSED',
-    });
+  // BE-19 — niemutowalność „po dacie", nie „po statusie": dzień „dziś" jest edytowalny także
+  // gdy `closed` (wywołujący ładuje wyłącznie „dziś" po userId_date, więc closed = dzisiejszy zamknięty).
+  it('dzień closed (dzisiejszy) → ok (mutowalny; re-edycja dozwolona)', () => {
+    expect(checkDayMutable({ status: 'closed' })).toEqual({ ok: true });
   });
   it('evening_pending → ok', () => {
     expect(checkDayMutable({ status: 'evening_pending' })).toEqual({ ok: true });
@@ -28,12 +26,9 @@ describe('checkCanCloseDay', () => {
     });
   });
 
-  it('dzień już closed → 409 DAY_ALREADY_CLOSED (niemutowalny)', () => {
-    expect(checkCanCloseDay({ status: 'closed', goals }, ['a', 'b', 'c'])).toMatchObject({
-      ok: false,
-      status: 409,
-      code: 'DAY_ALREADY_CLOSED',
-    });
+  // BE-19 — dzisiejszy closed można re-submitować (mutowalny po dacie), o ile cele pasują.
+  it('dzień closed (dzisiejszy) + dokładnie te cele → ok (re-submit dozwolony)', () => {
+    expect(checkCanCloseDay({ status: 'closed', goals }, ['a', 'b', 'c'])).toEqual({ ok: true });
   });
 
   it('obce/niepełne id celów → 400 GOAL_MISMATCH', () => {

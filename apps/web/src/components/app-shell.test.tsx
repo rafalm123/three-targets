@@ -6,6 +6,7 @@ import { AppShell } from './app-shell';
 // StreakBadge i LogoutButton mają własne testy — tu podmieniamy na markery, by sprawdzić że
 // AppShell dokłada globalny chrome (logout/streak/nav) na trasach za loginem.
 vi.mock('./streak-badge', () => ({ StreakBadge: () => <span>STREAK</span> }));
+vi.mock('./streak-reset', () => ({ StreakReset: () => <span>STREAK_RESET</span> }));
 vi.mock('./logout-button', () => ({ LogoutButton: () => <span>LOGOUT</span> }));
 
 function renderShell(showNav: boolean, path = '/'): void {
@@ -28,13 +29,15 @@ describe('AppShell (FE-6/FE-11/FE-12)', () => {
     expect(screen.getByText('CONTENT')).toBeTruthy();
     expect(screen.queryByText('LOGOUT')).toBeNull();
     expect(screen.queryByText('STREAK')).toBeNull();
+    expect(screen.queryByText('STREAK_RESET')).toBeNull();
     expect(screen.queryByRole('navigation')).toBeNull();
   });
 
-  it('showNav: logout + streak + nawigacja obecne (trasa „Dziś")', () => {
+  it('showNav: logout + streak + reset streaka + nawigacja obecne (trasa „Dziś")', () => {
     renderShell(true, '/');
     expect(screen.getByText('LOGOUT')).toBeTruthy();
     expect(screen.getByText('STREAK')).toBeTruthy();
+    expect(screen.getByText('STREAK_RESET')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Dziś' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Historia' })).toBeTruthy();
   });

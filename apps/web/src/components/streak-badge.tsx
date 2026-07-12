@@ -9,8 +9,13 @@ import { useStreakRefresh } from './streak-refresh';
  * `null` (nie pokazujemy błędu ani spinnera w chrome — brak serii nie może wywalić widoku dnia/
  * historii). Pokazuje `current` (płomień), a `longest`/`totalDays` w tytule/aria dla kontekstu.
  *
- * Re-fetchuje, gdy `refreshKey` z `useStreakRefresh` się zmieni (po zamknięciu dnia — CR NIT-1),
- * żeby seria rosła od razu w momencie nagrody, bez czekania na nawigację/odświeżenie.
+ * SEMANTYKA SERII (zmiana kontraktu BE): seria liczy kolejne dni, w których dowieziono CEL GŁÓWNY
+ * (`main.completed === true`) — cele poboczne bez znaczenia, a dzień zamknięty bez głównego zrywa
+ * serię. Copy poniżej celowo mówi „dni z dowiezionym celem głównym", nie „dni zamknięte", żeby nie
+ * sugerować, że nagrodą jest samo domknięcie wieczoru.
+ *
+ * Re-fetchuje, gdy `refreshKey` z `useStreakRefresh` się zmieni (po zamknięciu dnia / resecie serii
+ * — CR NIT-1), żeby licznik zmieniał się od razu w momencie nagrody/resetu, bez czekania na nawigację.
  */
 export function StreakBadge(): ReactNode {
   const [streak, setStreak] = useState<Streak | null>(null);
@@ -33,7 +38,7 @@ export function StreakBadge(): ReactNode {
 
   if (!streak) return null;
 
-  const title = `Seria: ${streak.current} ${dayWord(streak.current)} (rekord: ${streak.longest}, łącznie zamkniętych: ${streak.totalDays})`;
+  const title = `Seria: ${streak.current} ${dayWord(streak.current)} z rzędu z dowiezionym celem głównym (rekord: ${streak.longest}, łącznie dni z celem: ${streak.totalDays})`;
 
   return (
     <span className="streak-badge" title={title} aria-label={title}>

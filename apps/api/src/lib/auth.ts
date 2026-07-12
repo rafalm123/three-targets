@@ -24,6 +24,10 @@ function isValidTimeZone(tz: string): boolean {
  * Pola domenowe dokładane do modelu user:
  *  - role: user|admin (default 'user', input:false — nie ustawiane przy rejestracji; pod plugin admina, Faza 3)
  *  - timezone: IANA, wymagane, input:true — frontend wysyła strefę przeglądarki przy rejestracji (BE-16 granica doby)
+ *  - streakResetDate: lokalna data `YYYY-MM-DD` (nullable, input:false — ustawiana WYŁĄCZNIE serwerowo
+ *      przez POST /api/stats/streak/reset). BE-20: „podłoga" (floorDate) dla `current` serii — zeruje
+ *      tylko bieżącą serię, nie rusza longest/totalDays. String (data-only), bo additionalFields BA
+ *      nie ma natywnego typu daty; format spójny z resztą dat lokalnych (day.date jako YYYY-MM-DD).
  * displayName realizujemy wbudowanym polem `name`.
  */
 export const auth = betterAuth({
@@ -56,6 +60,8 @@ export const auth = betterAuth({
             .refine(isValidTimeZone, 'Niepoprawna strefa czasowa IANA (np. Europe/Warsaw)'),
         },
       },
+      // BE-20: ustawiana tylko serwerowo (reset serii). input:false → nie do przyjęcia od klienta.
+      streakResetDate: { type: 'string', required: false, input: false },
     },
   },
 });

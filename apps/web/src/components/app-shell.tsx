@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
 import { StreakBadge } from './streak-badge';
+import { StreakReset } from './streak-reset';
 import { StreakRefreshProvider } from './streak-refresh';
 import { LogoutButton } from './logout-button';
 
@@ -8,9 +9,11 @@ import { LogoutButton } from './logout-button';
  * Szkielet layoutu aplikacji (FE-5, rozszerzony FE-6/FE-11/FE-12): nagłówek + opcjonalna
  * nawigacja + treść.
  *
- * `showNav` = ekran za loginem → shell sam dokłada globalny chrome: wskaźnik serii (`StreakBadge`)
- * i przycisk „Wyloguj" (`LogoutButton`). Dzięki temu logout i streak są spójne na WSZYSTKICH
- * trasach za loginem (Dziś/Historia) — bez duplikowania logiki w każdym widoku (FE-12/NIT-1).
+ * `showNav` = ekran za loginem → shell sam dokłada globalny chrome: wskaźnik serii (`StreakBadge`),
+ * reset serii (`StreakReset`, z dialogiem potwierdzenia — FE-C) i przycisk „Wyloguj"
+ * (`LogoutButton`). Dzięki temu logout, streak i reset są spójne na WSZYSTKICH trasach za loginem
+ * (Dziś/Historia) — bez duplikowania logiki w każdym widoku (FE-12/NIT-1). StreakReset korzysta
+ * z tego samego `StreakRefreshProvider` co badge, więc po resecie licznik odświeża się od razu.
  * Ekrany auth (login/rejestracja) mają `showNav=false` → brak nawigacji, logoutu i streaka.
  *
  * `headerActions` pozwala widokowi dołożyć własne akcje kontekstowe obok globalnych.
@@ -36,6 +39,7 @@ export function AppShell({
         <h1>Trzy Cele</h1>
         <div className="app-header-actions">
           {showNav ? <StreakBadge /> : null}
+          {showNav ? <StreakReset /> : null}
           {headerActions}
           {showNav ? <LogoutButton /> : null}
         </div>

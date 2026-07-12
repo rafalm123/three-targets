@@ -201,9 +201,10 @@ export const dayRoutes: FastifyPluginAsyncZod = async (app) => {
     },
   );
 
-  // BE-12 — wieczorne odznaczenie: oznacza każdy z 3 celów (dowieziony/nie + opcjonalna notatka),
-  // zapisuje notatkę wieczorną i przełącza dzień evening_pending → closed. Reguły przejścia
-  // (istnienie / niemutowalność closed / spójność celów) w checkCanCloseDay. Zapis atomowy (transakcja).
+  // BE-12/BE-19 — wieczorne odznaczenie: oznacza każdy z 3 celów (dowieziony/nie + opcjonalna notatka),
+  // zapisuje notatkę wieczorną i ustawia dzień na `closed`. Reguły (istnienie dnia „dziś" / spójność
+  // celów) w checkCanCloseDay. BE-19: dzień „dziś" można re-submitować także po zamknięciu (mutowalność
+  // po dacie, nie po statusie); dni przeszłe nieosiągalne (endpoint ładuje tylko userToday). Zapis atomowy.
   app.post(
     '/days/today/evening',
     {
@@ -234,14 +235,16 @@ export const dayRoutes: FastifyPluginAsyncZod = async (app) => {
         return reply.status(guard.status).send(err);
       }
 
-      // guard.ok: dzień istnieje, evening_pending, a body.goals to dokładnie cele tego dnia.
-      // Niemutowalność `closed` egzekwowana ATOMOWO: warunkowy updateMany (status='evening_pending')
-      // jako pierwszy krok transakcji — przy wyścigu (double-submit) przegrany trafia count===0 →
-      // rollback → 409. Guard powyżej to tylko szybka ścieżka dla przypadku sekwencyjnego.
+      // guard.ok: dzień istnieje (dziś), a body.goals to dokładnie cele tego dnia.
+      // BE-19: dzień „dziś" jest mutowalny także gdy `closed` (re-submit wieczoru), więc bramka
+      // gate'uje po `userId, date` (= dziś — endpoint ładuje wyłącznie userToday), NIE po statusie.
+      // Chroni to nadal atomowo przed równoległym double-submit (warunkowy updateMany po kluczu dnia)
+      // oraz — strukturalnie — przed mutacją dni przeszłych (nieosiągalne tą trasą). `count===0` to
+      // teraz przypadek obronny (dzień zniknął) → rollback → 409.
       try {
         const updated = await prisma.$transaction(async (tx) => {
           const gate = await tx.day.updateMany({
-            where: { userId: user.id, date, status: 'evening_pending' },
+            where: { userId: user.id, date },
             data: { eveningNote: body.eveningNote ?? null, status: 'closed' },
           });
           if (gate.count === 0) throw new DayAlreadyClosedError();
@@ -271,9 +274,9 @@ export const dayRoutes: FastifyPluginAsyncZod = async (app) => {
     },
   );
 
-  // BE-11 — edycja porannego wpisu. Zastępuje treść poranną (1 główny + 2 poboczne + notatka)
-  // TYLKO gdy dzień = „dziś" i status evening_pending; closed niemutowalny, brak edycji wstecz
-  // (decyzja @sa). Niemutowalność egzekwowana atomowo (warunkowy updateMany) — wzorzec z BE-12.
+  // BE-11/BE-19 — edycja porannego wpisu. Zastępuje treść poranną (1 główny + 2 poboczne + notatka)
+  // dla dnia „dziś", NIEZALEŻNIE od statusu (BE-19: dziś closed też edytowalny — mutowalność po dacie).
+  // Dni przeszłe zamrożone strukturalnie (endpoint ładuje tylko userToday). Atomowa bramka po kluczu dnia.
   app.patch(
     '/days/today',
     {
@@ -308,8 +311,9 @@ export const dayRoutes: FastifyPluginAsyncZod = async (app) => {
 
       try {
         const updated = await prisma.$transaction(async (tx) => {
+          // BE-19: gate po `userId, date` (= dziś), NIE po statusie — dziś closed też edytowalny.
           const gate = await tx.day.updateMany({
-            where: { userId: user.id, date, status: 'evening_pending' },
+            where: { userId: user.id, date },
             data: { morningNote: body.morningNote ?? null },
           });
           if (gate.count === 0) throw new DayAlreadyClosedError();

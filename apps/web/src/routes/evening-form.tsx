@@ -49,8 +49,14 @@ export function EveningForm({
   onConflict: (code: string | undefined) => void;
 }): ReactNode {
   const goals = orderedGoals(day);
-  const [marks, setMarks] = useState<Mark[]>(() => goals.map(() => ({ completed: null, note: '' })));
-  const [eveningNote, setEveningNote] = useState('');
+  // Prefill z dnia (FE-B, re-submit dzisiejszego `closed`): dzień MA już `completed`/`completedNote`/
+  // `eveningNote`. BE robi PEŁNE zastąpienie, więc gdybyśmy startowali od pustki, poprawa jednego celu
+  // wyzerowałaby resztę. Startujemy więc od zapisanego stanu; przy `evening_pending` pola są puste
+  // (completed=null, note=''), więc dla pierwszego oznaczania zachowanie jest bez zmian.
+  const [marks, setMarks] = useState<Mark[]>(() =>
+    goals.map((g) => ({ completed: g.completed, note: g.completedNote ?? '' })),
+  );
+  const [eveningNote, setEveningNote] = useState(day.eveningNote ?? '');
   const [markErrors, setMarkErrors] = useState<boolean[]>(() => goals.map(() => false));
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);

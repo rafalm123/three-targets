@@ -17,6 +17,7 @@
   --color-primary: #2563eb;
   --color-primary-hover: #1d4ed8;
   --color-error: #dc2626;
+  --color-error-hover: #b91c1c;
   --color-error-bg: #fef2f2;
   --color-success: #166534;
   --color-success-bg: #dcfce7;
@@ -283,6 +284,68 @@ a {
 
 .button-secondary:hover:not(:disabled) {
   background: var(--color-bg);
+}
+
+/* Akcja destrukcyjna (reset serii) — kolor semantyczny błędu/ostrzeżenia. */
+.button-danger {
+  color: #fff;
+  background: var(--color-error);
+  border: none;
+}
+
+.button-danger:hover:not(:disabled) {
+  background: var(--color-error-hover);
+}
+
+/* --- Reset serii (FE-C): dyskretny trigger w nagłówku + natywny dialog potwierdzenia --- */
+.streak-reset-trigger {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px; /* touch target ≥44px (wytyczna UI, dziennik mobilny) */
+  padding: 0.25rem 0.625rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-muted);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.streak-reset-trigger:hover {
+  color: var(--color-error);
+  border-color: var(--color-error);
+}
+
+/* Natywny <dialog>: centrowanie przez margin auto; backdrop przez pseudo-element ::backdrop. */
+.dialog {
+  width: 100%;
+  max-width: 420px;
+  margin: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.dialog::backdrop {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.dialog-body {
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+
+.dialog-body h2 {
+  margin-top: 0;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
 }
 
 .form-error {

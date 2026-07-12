@@ -18,9 +18,7 @@ import {
  * z `@trzy-cele/shared`, a do walidacji odpowiedzi wystarczy nam `safeParse`.
  */
 interface Parseable<T> {
-  safeParse: (data: unknown) =>
-    | { success: true; data: T }
-    | { success: false };
+  safeParse: (data: unknown) => { success: true; data: T } | { success: false };
 }
 
 /**
@@ -111,8 +109,9 @@ export async function createDay(entry: MorningEntry): Promise<Day> {
 /**
  * PATCH /api/days/today — edycja porannego wpisu (**pełne zastąpienie**, nie merge). Wysyłamy
  * komplet 1 główny + 2 poboczne + `morningNote`; pominięte opcjonalne pola serwer ustawi na null.
- * Zwraca *goły* `Day` (200). Błędy: 409 `DAY_ALREADY_CLOSED` (zamknięty w międzyczasie),
- * 404 `NO_DAY_TODAY` → `ApiRequestError` z odpowiednim `code` (UI przeładuje HUB).
+ * Zwraca *goły* `Day` (200). DZISIEJSZY dzień jest edytowalny również po zamknięciu (FE-B) — status
+ * `closed` NIE blokuje edycji „dziś". 409 `DAY_ALREADY_CLOSED` to ścieżka martwa-obronna (wyścig/
+ * zniknięcie dnia), 404 `NO_DAY_TODAY` = brak dnia → `ApiRequestError` z `code` (UI przeładuje HUB).
  */
 export async function updateMorning(entry: MorningEntry): Promise<Day> {
   const response = await fetch('/api/days/today', {
@@ -127,8 +126,10 @@ export async function updateMorning(entry: MorningEntry): Promise<Day> {
 /**
  * POST /api/days/today/evening — wieczorne odznaczenie (dzień → `closed`). `goals` to DOKŁADNIE
  * 3 obiekty `{id, completed, completedNote?}`, gdzie `id` = id celów z pobranego dnia (nie wymyślać).
- * Zwraca *goły* `Day` (200). Błędy: 409 `DAY_ALREADY_CLOSED`, 400 `GOAL_MISMATCH` (złe/niepełne id),
- * 404 `NO_DAY_TODAY` → `ApiRequestError` z `code` (UI reaguje / przeładuje HUB).
+ * Zwraca *goły* `Day` (200). Działa też jako RE-SUBMIT dzisiejszego `closed` (FE-B) — status `closed`
+ * NIE blokuje ponownego oznaczenia „dziś". 400 `GOAL_MISMATCH` = złe/niepełne id; 409
+ * `DAY_ALREADY_CLOSED` to ścieżka martwa-obronna (wyścig); 404 `NO_DAY_TODAY` = brak dnia →
+ * `ApiRequestError` z `code` (UI reaguje / przeładuje HUB).
  */
 export async function submitEvening(entry: EveningEntry): Promise<Day> {
   const response = await fetch('/api/days/today/evening', {
@@ -143,6 +144,21 @@ export async function submitEvening(entry: EveningEntry): Promise<Day> {
 /** GET /api/stats/streak — licznik/seria (current / longest / totalDays / asOfDate). */
 export async function getStreak(): Promise<Streak> {
   const response = await fetch('/api/stats/streak', { headers: { Accept: 'application/json' } });
+  if (!response.ok) throw await readApiError(response);
+  return parseOk(streakSchema, await response.json(), response.status);
+}
+
+/**
+ * POST /api/stats/streak/reset — zeruje BIEŻĄCĄ serię (`current` → 0); `longest`/`totalDays`
+ * zostają nietknięte. Zwraca ten sam kształt co `getStreak` (`streakSchema`). Akcja destrukcyjna
+ * i nieodwracalna — UI woła ją WYŁĄCZNIE po potwierdzeniu w dialogu (filozofia właściciela:
+ * „apka dla samokontroli, nie apka mnie kontroluje" — reset ma być łatwy, ale świadomy).
+ */
+export async function resetStreak(): Promise<Streak> {
+  const response = await fetch('/api/stats/streak/reset', {
+    method: 'POST',
+    headers: { Accept: 'application/json' },
+  });
   if (!response.ok) throw await readApiError(response);
   return parseOk(streakSchema, await response.json(), response.status);
 }

@@ -20,17 +20,90 @@ function pendingDay(): Day {
     morningNote: null,
     eveningNote: null,
     goals: [
-      { id: 'g-main', kind: 'main', position: 0, title: 'Główny', note: null, completed: null, completedNote: null },
-      { id: 'g-s1', kind: 'secondary', position: 1, title: 'Poboczny A', note: null, completed: null, completedNote: null },
-      { id: 'g-s2', kind: 'secondary', position: 2, title: 'Poboczny B', note: null, completed: null, completedNote: null },
+      {
+        id: 'g-main',
+        kind: 'main',
+        position: 0,
+        title: 'Główny',
+        note: null,
+        completed: null,
+        completedNote: null,
+      },
+      {
+        id: 'g-s1',
+        kind: 'secondary',
+        position: 1,
+        title: 'Poboczny A',
+        note: null,
+        completed: null,
+        completedNote: null,
+      },
+      {
+        id: 'g-s2',
+        kind: 'secondary',
+        position: 2,
+        title: 'Poboczny B',
+        note: null,
+        completed: null,
+        completedNote: null,
+      },
     ],
   };
 }
 
-function renderForm(overrides?: { onClosed?: () => void; onConflict?: () => void }) {
+/**
+ * Dzień już zamknięty z pełnymi danymi wieczoru (re-submit — FE-B): każdy cel ma `completed` i
+ * niektóre `completedNote`, jest też `eveningNote`. Służy do testu, że re-submit NIE gubi danych.
+ */
+function closedDay(): Day {
+  return {
+    id: 'd1',
+    date: '2026-07-09',
+    status: 'closed',
+    morningNote: null,
+    eveningNote: 'stara notatka wieczorna',
+    goals: [
+      {
+        id: 'g-main',
+        kind: 'main',
+        position: 0,
+        title: 'Główny',
+        note: null,
+        completed: true,
+        completedNote: 'główny szło',
+      },
+      {
+        id: 'g-s1',
+        kind: 'secondary',
+        position: 1,
+        title: 'Poboczny A',
+        note: null,
+        completed: false,
+        completedNote: null,
+      },
+      {
+        id: 'g-s2',
+        kind: 'secondary',
+        position: 2,
+        title: 'Poboczny B',
+        note: null,
+        completed: true,
+        completedNote: 'poboczny B ok',
+      },
+    ],
+  };
+}
+
+function renderForm(overrides?: { onClosed?: () => void; onConflict?: () => void; day?: Day }) {
   const onClosed = vi.fn(overrides?.onClosed);
   const onConflict = vi.fn(overrides?.onConflict);
-  render(<EveningForm day={pendingDay()} onClosed={onClosed} onConflict={onConflict} />);
+  render(
+    <EveningForm
+      day={overrides?.day ?? pendingDay()}
+      onClosed={onClosed}
+      onConflict={onConflict}
+    />,
+  );
   return { onClosed, onConflict };
 }
 
@@ -139,6 +212,42 @@ describe('EveningForm (FE-8)', () => {
     await user.click(screen.getByRole('button', { name: 'Zamknij dzień' }));
 
     await waitFor(() => expect(onConflict).toHaveBeenCalledWith('GOAL_MISMATCH'));
+  });
+
+  it('re-submit (dzień closed): prefill z dnia — submit od razu aktywny, brak licznika', () => {
+    renderForm({ day: closedDay() });
+    // Wszystkie 3 cele mają już `completed` z dnia → remaining===0 → przycisk aktywny bez klikania.
+    expect(screen.getByRole('button', { name: 'Zamknij dzień' })).toHaveProperty('disabled', false);
+    expect(screen.queryByText(/Oceń jeszcze/)).toBeNull();
+    // Radio odzwierciedla zapisany stan: główny dowieziony, poboczny A niedowieziony.
+    const done = screen.getAllByRole('radio', { name: 'Dowiezione' });
+    const notDone = screen.getAllByRole('radio', { name: 'Niedowiezione' });
+    expect((done[0] as HTMLInputElement).checked).toBe(true);
+    expect((notDone[1] as HTMLInputElement).checked).toBe(true);
+    expect((done[2] as HTMLInputElement).checked).toBe(true);
+  });
+
+  it('re-submit: poprawa JEDNEGO celu nie gubi pozostałych danych (notatki/eveningNote z prefillu)', async () => {
+    const closed = closedDay();
+    submitEvening.mockResolvedValue(closed);
+    const user = userEvent.setup();
+    renderForm({ day: closed });
+
+    // Poprawiamy tylko poboczny A: było „Niedowiezione" → zmieniamy na „Dowiezione". Reszta nietknięta.
+    await user.click(screen.getAllByRole('radio', { name: 'Dowiezione' })[1]!);
+    await user.click(screen.getByRole('button', { name: 'Zamknij dzień' }));
+
+    await waitFor(() => expect(submitEvening).toHaveBeenCalledTimes(1));
+    // KLUCZOWE (B1): payload zachowuje `completedNote` głównego i poboczny B oraz `eveningNote` z
+    // prefillu — mimo że BE robi pełne zastąpienie, nie nadpisujemy ich nullem.
+    expect(submitEvening).toHaveBeenCalledWith({
+      goals: [
+        { id: 'g-main', completed: true, completedNote: 'główny szło' },
+        { id: 'g-s1', completed: true },
+        { id: 'g-s2', completed: true, completedNote: 'poboczny B ok' },
+      ],
+      eveningNote: 'stara notatka wieczorna',
+    });
   });
 
   it('inny błąd API → komunikat w form-error, przycisk znów aktywny', async () => {

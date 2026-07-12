@@ -18,7 +18,18 @@ describe('StreakBadge (FE-11)', () => {
     await waitFor(() => expect(screen.getByText('4')).toBeTruthy());
     const badge = screen.getByLabelText(/Seria: 4 dni/);
     expect(badge.getAttribute('title')).toContain('rekord: 9');
-    expect(badge.getAttribute('title')).toContain('łącznie zamkniętych: 20');
+    expect(badge.getAttribute('title')).toContain('łącznie dni z celem: 20');
+  });
+
+  it('copy komunikuje serię przez CEL GŁÓWNY (nie samo domknięcie wieczoru)', async () => {
+    getStreak.mockResolvedValue({ current: 4, longest: 9, totalDays: 20, asOfDate: '2026-07-09' });
+    render(<StreakBadge />);
+    await waitFor(() => expect(screen.getByText('4')).toBeTruthy());
+    const badge = screen.getByLabelText(/Seria/);
+    const title = badge.getAttribute('title') ?? '';
+    expect(title.toLowerCase()).toContain('głów');
+    // Nie sugerujemy już, że liczy się „zamknięcie" dnia — semantyka to dowieziony cel główny.
+    expect(title).not.toContain('zamkniętych');
   });
 
   it('pluralizacja: current===1 → „1 dzień", nie „1 dni" (CR NIT-2)', async () => {
