@@ -1,16 +1,21 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ApiRequestError,
+  createChallenge,
   createDay,
+  getActiveChallenge,
+  getChallenge,
   getDayByDate,
   getHistory,
   getStreak,
   getToday,
+  listChallenges,
   resetStreak,
   submitEvening,
+  updateChallenge,
   updateMorning,
 } from './api';
-import type { EveningEntry, MorningEntry } from '@trzy-cele/shared';
+import type { ChallengeCreate, EveningEntry, MorningEntry } from '@trzy-cele/shared';
 
 // Mockujemy globalny fetch — testujemy warstwę klienta (koperty, walidacja, mapowanie błędów),
 // nie realną sieć.
@@ -271,5 +276,153 @@ describe('getDayByDate', () => {
       ),
     );
     await expect(getDayByDate('2030-01-01')).rejects.toMatchObject({ code: 'FUTURE_DATE' });
+  });
+});
+
+// ── Faza 2: challenges („Lista celów") ─────────────────────────────────────────────────────────
+
+const CHALLENGE: ChallengeCreate = {
+  title: 'Lipiec',
+  tiers: [
+    { threshold: 10, reward: 'Kino' },
+    { threshold: 20, reward: 'Książka' },
+  ],
+};
+
+const CHALLENGE_WITH_POINTS = {
+  id: 'ch-1',
+  title: 'Lipiec',
+  startDate: '2026-07-13',
+  endDate: '2026-08-11',
+  createdAt: '2026-07-13T08:00:00.000Z',
+  totalPoints: 7,
+  nextThreshold: 10,
+  pointsToNext: 3,
+  tiers: [
+    { threshold: 10, reward: 'Kino', unlocked: false },
+    { threshold: 20, reward: 'Książka', unlocked: false },
+  ],
+};
+
+const CHALLENGE_SUMMARY = {
+  id: 'ch-old',
+  title: 'Czerwiec',
+  startDate: '2026-06-01',
+  endDate: '2026-06-30',
+  totalPoints: 42,
+};
+
+describe('createChallenge', () => {
+  it('happy path: POST /api/challenges z ciałem, zwraca ChallengeWithPoints (201)', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(CHALLENGE_WITH_POINTS, { status: 201 }));
+    const result = await createChallenge(CHALLENGE);
+    expect(result.id).toBe('ch-1');
+    expect(result.totalPoints).toBe(7);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/challenges');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual(CHALLENGE);
+  });
+
+  it('409 z kopertą błędu → ApiRequestError z code=ACTIVE_CHALLENGE_EXISTS', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(
+        { error: { message: 'Masz już aktywną listę', code: 'ACTIVE_CHALLENGE_EXISTS' } },
+        { ok: false, status: 409 },
+      ),
+    );
+    await expect(createChallenge(CHALLENGE)).rejects.toMatchObject({
+      code: 'ACTIVE_CHALLENGE_EXISTS',
+      status: 409,
+    });
+  });
+
+  it('niezgodny kształt odpowiedzi OK → ApiRequestError (zerwany kontrakt)', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ nope: true }, { status: 201 }));
+    await expect(createChallenge(CHALLENGE)).rejects.toBeInstanceOf(ApiRequestError);
+  });
+
+  it('awaria sieci (fetch rzuca) → rzut przepuszczony, NIE ApiRequestError', async () => {
+    fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
+    await expect(createChallenge(CHALLENGE)).rejects.toBeInstanceOf(TypeError);
+  });
+});
+
+describe('getActiveChallenge', () => {
+  it('happy path: waliduje kopertę { challenge } i ją zwraca', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ challenge: CHALLENGE_WITH_POINTS }));
+    const result = await getActiveChallenge();
+    expect(result.challenge?.id).toBe('ch-1');
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe('/api/challenges/active');
+  });
+
+  it('brak aktywnej → { challenge: null }', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ challenge: null }));
+    const result = await getActiveChallenge();
+    expect(result.challenge).toBeNull();
+  });
+
+  it('niezgodny kształt odpowiedzi OK → ApiRequestError (zerwany kontrakt)', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ unexpected: true }));
+    await expect(getActiveChallenge()).rejects.toBeInstanceOf(ApiRequestError);
+  });
+
+  it('awaria sieci (fetch rzuca) → rzut przepuszczony', async () => {
+    fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
+    await expect(getActiveChallenge()).rejects.toBeInstanceOf(TypeError);
+  });
+});
+
+describe('listChallenges', () => {
+  it('happy path: GET /api/challenges, waliduje { items }', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ items: [CHALLENGE_SUMMARY] }));
+    const result = await listChallenges();
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.id).toBe('ch-old');
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe('/api/challenges');
+  });
+
+  it('błąd HTTP → ApiRequestError', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({ error: { message: 'boom' } }, { ok: false, status: 500 }),
+    );
+    await expect(listChallenges()).rejects.toBeInstanceOf(ApiRequestError);
+  });
+});
+
+describe('getChallenge', () => {
+  it('happy path: GET /api/challenges/:id, zwraca { challenge }', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ challenge: CHALLENGE_WITH_POINTS }));
+    const result = await getChallenge('ch-1');
+    expect(result.challenge?.id).toBe('ch-1');
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe('/api/challenges/ch-1');
+  });
+
+  it('brak listy → { challenge: null }', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ challenge: null }));
+    const result = await getChallenge('nope');
+    expect(result.challenge).toBeNull();
+  });
+});
+
+describe('updateChallenge', () => {
+  it('happy path: PATCH /api/challenges/:id z ciałem, zwraca ChallengeWithPoints', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(CHALLENGE_WITH_POINTS));
+    const result = await updateChallenge('ch-1', CHALLENGE);
+    expect(result.id).toBe('ch-1');
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/challenges/ch-1');
+    expect(init.method).toBe('PATCH');
+    expect(JSON.parse(init.body as string)).toEqual(CHALLENGE);
+  });
+
+  it('błąd HTTP → ApiRequestError', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({ error: { message: 'boom' } }, { ok: false, status: 500 }),
+    );
+    await expect(updateChallenge('ch-1', CHALLENGE)).rejects.toBeInstanceOf(ApiRequestError);
   });
 });

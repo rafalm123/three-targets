@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { ChallengePage } from './routes/challenge-page';
 import { HistoryDayPage } from './routes/history-day-page';
 import { HistoryPage } from './routes/history-page';
 import { LoginPage } from './routes/login-page';
@@ -31,6 +32,7 @@ export function App(): ReactNode {
 
         <Route element={<ProtectedRoute />}>
           <Route path="/" element={<TodayPage />} />
+          <Route path="/cele" element={<ChallengePage />} />
           <Route path="/historia" element={<HistoryPage />} />
           <Route path="/historia/:date" element={<HistoryDayPage />} />
         </Route>

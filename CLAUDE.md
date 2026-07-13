@@ -100,10 +100,14 @@ PostgreSQL (Neon)
     Wieczorne odznaczenie → `closed`. `closed` jest **niemutowalny**; mutacje dnia (edycja/odznaczenie) tylko dla „dziś".
     Reguły przejść zdefiniowane w jednym serwisie doby.
 - **`goals`** — `id, dayId, kind (main|secondary), position, title, note, completed (bool|null), completedNote`.
-- **`point_events`** *(poza MVP)* — append-only ledger: `id, userId, dayId, delta, reason, createdBy, createdAt`.
-  - **`delta` jako INTEGER w „półpunktach"** (poboczny wykonany = `+1`, kara za główny = `−2`) **lub `NUMERIC`** — **nigdy float** (sumowanie floatów w saldzie = błędy zaokrągleń). Prezentacja dzieli przez 2.
-  - Saldo i historia liczone z eventów.
-- **`lifeline_usage`** *(poza MVP)* — `id, userId, yearMonth, dayId` — limit 1 koło/miesiąc.
+- **`challenge`** *(Faza 2, BE-P1)* — 30-dniowe wyzwanie punktowe („Lista celów"): `id, userId, title (String?), startDate, endDate, createdAt`.
+  - `startDate`/`endDate` = LOKALNE daty użytkownika, trzymane **tym samym wzorcem co `Day.date`** (`@db.Date`, północ UTC przez `dateOnlyUtc`; odczyt `.toISOString().slice(0,10)`) → porównania okna leksykograficzne = kalendarzowe. Indeks po `userId`.
+  - `startDate = userToday(tz)`, `endDate = start + 29 dni`. **„Aktywne"** = `endDate >= dziś` (max 1/usera — 409 na drugą aktywną); **„historia"** = `endDate < dziś`.
+- **`reward_tier`** *(Faza 2, BE-P1)* — progi nagród wyzwania: `id, challengeId (FK, onDelete Cascade), threshold (Int), reward (String)`. Unikat `(challengeId, threshold)`. Progi = wielokrotność 10 w zakresie 10..60 (walidacja w kontrakcie zod; okno 30 dni × max +2/dzień = teoretyczne max 60 pkt).
+- **PUNKTY WYZWANIA liczone DERYWACYJNIE** (decyzja @sa, jak streak — on-the-fly z `days`/`goals`, **BEZ ledgera**): `totalPoints` = liczba celów `kind='secondary', completed=true` w dniach usera z `date` w oknie `[startDate, min(dziś, endDate)]`. **Model (finalny, BEZ KAR):** poboczny wykonany = **+1** (każdy, max +2/dzień), główny = **0** (bez znaczenia), **ZERO odejmowania/ujemnych** — punkty tylko rosną. Dzień pominięty / niezamknięty / dziś w toku → poboczne nie `completed` → 0 wkładu. Czysta logika w `apps/api/src/lib/points-service.ts` (testowana bez DB, jak `streak.ts`); orkiestracja DB w `challenge-service.ts`.
+- **`point_events`** *(świadomie ODŁOŻONE do Fazy 3 — koło ratunkowe/admin/audyt)* — append-only ledger: `id, userId, dayId, delta, reason, createdBy, createdAt`.
+  - **Świadome odejście od pierwotnego planu:** Faza 2 pierwotnie zakładała ledger `point_events` już dla punktów. Po pivocie na „Wyzwania punktowe" (model +1 za poboczne, bez kar) punkty są w pełni **derywowalne z `days`/`goals`**, więc ledger byłby zbędnym stanem do zsynchronizowania. Ledger wraca w Fazie 3, gdy pojawi się potrzeba ręcznych korekt/audytu (koło ratunkowe, admin) — wtedy `delta` jako INTEGER (**nigdy float**), saldo/historia z eventów.
+- **`lifeline_usage`** *(Faza 3)* — `id, userId, yearMonth, dayId` — limit 1 koło/miesiąc.
 
 **Streak / licznik dni** liczymy z `days` (nie trzymamy w osobnym polu → brak rozjazdu).
 **Definicja serii (decyzja @sa; zmiana BE-18):** maksymalny ciąg kolejnych dni kalendarzowych z **dowiezionym
@@ -185,8 +189,8 @@ pnpm dev                     # api + web (Vite proxy /api → api)
 
 - **Faza 0 — Walking Skeleton:** monorepo, CI, docker-compose (lokalny Postgres), Better Auth + Neon, jeden kontener (API+statyk), deploy E2E na Render z działającym logowaniem, backup bazy. *Najpierw dowodzimy że pipeline działa, potem funkcje.* — ✅ kod/konfiguracja gotowe; faktyczny deploy+backup = akcja właściciela (`docs/DEPLOY.md`).
 - **Faza 1 — MVP:** logowanie · rano 1 główny + 2 poboczne + notatki · wieczorem done/not + notatka · historia/dziennik · licznik dni/streak. — Backend ✅ (BE-3…17), auth-UI ✅ (FE-1…5); **zostają widoki dziennika FE-6…12**.
-- **Faza 2 — Punkty:** ledger (integer/półpunkty), +poboczne, −niewykonany główny, suma + streak.
-- **Faza 3 — Koło ratunkowe + Admin:** lifeline 1/mies., rola admina (anulowanie kary, audyt).
+- **Faza 2 — „Lista celów" = 30-dniowe wyzwanie punktowe** (PIVOT; zatwierdzone przez właściciela): user tworzy wyzwanie z progami nagród; punkty naliczane **DERYWACYJNIE** z `days`/`goals` (poboczny +1, główny 0, **bez kar/ujemnych**). Modele `challenge`/`reward_tier` (BE-P1); logika w `points-service.ts` (czysta) + `challenge-service.ts`; endpointy `POST/GET/PATCH /api/challenges*`. **Świadome odejście od pierwotnego ledgera `point_events`** — patrz §4 (ledger wraca w Fazie 3).
+- **Faza 3 — Koło ratunkowe + Admin:** lifeline 1/mies., rola admina (anulowanie kary, audyt). **Wtedy** wchodzi `point_events` (ledger dla ręcznych korekt/audytu).
 - **Faza 4 — Polish:** statystyki/wykresy, eksport dziennika (JSON = też ręczny backup).
 
 ---

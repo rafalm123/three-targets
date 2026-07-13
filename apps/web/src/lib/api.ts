@@ -1,9 +1,17 @@
 import {
   apiErrorSchema,
+  challengeListSchema,
+  challengeResponseSchema,
+  challengeWithPointsSchema,
   dayHistorySchema,
   dayResponseSchema,
   daySchema,
   streakSchema,
+  type ChallengeCreate,
+  type ChallengeList,
+  type ChallengeResponse,
+  type ChallengeUpdate,
+  type ChallengeWithPoints,
   type Day,
   type DayHistory,
   type DayResponse,
@@ -189,4 +197,71 @@ export async function getDayByDate(date: string): Promise<DayResponse> {
   const response = await fetch(`/api/days/${date}`, { headers: { Accept: 'application/json' } });
   if (!response.ok) throw await readApiError(response);
   return parseOk(dayResponseSchema, await response.json(), response.status);
+}
+
+// ── Faza 2: „Lista celów" — 30-dniowe wyzwanie punktowe (challenges) ──────────────────────────
+// Kontrakty (`challenge*Schema` / typy) z `@trzy-cele/shared` — jedno źródło prawdy z BE.
+
+/**
+ * POST /api/challenges — tworzy nową aktywną listę (30-dniowe wyzwanie). Zwraca *goły*
+ * `ChallengeWithPoints` (201). 409 `ACTIVE_CHALLENGE_EXISTS` = już istnieje aktywna lista →
+ * `ApiRequestError` z tym kodem (UI kieruje do istniejącej / pokazuje komunikat).
+ */
+export async function createChallenge(input: ChallengeCreate): Promise<ChallengeWithPoints> {
+  const response = await fetch('/api/challenges', {
+    method: 'POST',
+    headers: { ...JSON_HEADERS, Accept: 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw await readApiError(response);
+  return parseOk(challengeWithPointsSchema, await response.json(), response.status);
+}
+
+/**
+ * GET /api/challenges/active — aktywna lista albo `null`. Zwraca `{ challenge: ChallengeWithPoints
+ * | null }`; `null` steruje UI do ekranu „Utwórz listę".
+ */
+export async function getActiveChallenge(): Promise<ChallengeResponse> {
+  const response = await fetch('/api/challenges/active', {
+    headers: { Accept: 'application/json' },
+  });
+  if (!response.ok) throw await readApiError(response);
+  return parseOk(challengeResponseSchema, await response.json(), response.status);
+}
+
+/**
+ * GET /api/challenges — historia zakończonych list (podsumowania z finalnym `totalPoints`).
+ * Zwraca `{ items: ChallengeSummary[] }`.
+ */
+export async function listChallenges(): Promise<ChallengeList> {
+  const response = await fetch('/api/challenges', { headers: { Accept: 'application/json' } });
+  if (!response.ok) throw await readApiError(response);
+  return parseOk(challengeListSchema, await response.json(), response.status);
+}
+
+/**
+ * GET /api/challenges/:id — pojedyncza lista (aktywna lub z historii). Zwraca
+ * `{ challenge: ChallengeWithPoints | null }` (`null` = brak takiej listy).
+ */
+export async function getChallenge(id: string): Promise<ChallengeResponse> {
+  const response = await fetch(`/api/challenges/${id}`, { headers: { Accept: 'application/json' } });
+  if (!response.ok) throw await readApiError(response);
+  return parseOk(challengeResponseSchema, await response.json(), response.status);
+}
+
+/**
+ * PATCH /api/challenges/:id — edycja aktywnej listy (tytuł + progi/nagrody). Zwraca *goły*
+ * `ChallengeWithPoints` (200).
+ */
+export async function updateChallenge(
+  id: string,
+  input: ChallengeUpdate,
+): Promise<ChallengeWithPoints> {
+  const response = await fetch(`/api/challenges/${id}`, {
+    method: 'PATCH',
+    headers: { ...JSON_HEADERS, Accept: 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw await readApiError(response);
+  return parseOk(challengeWithPointsSchema, await response.json(), response.status);
 }

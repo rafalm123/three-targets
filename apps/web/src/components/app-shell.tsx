@@ -49,6 +49,9 @@ export function AppShell({
           <NavLink to="/" end className={navLinkClass}>
             Dziś
           </NavLink>
+          <NavLink to="/cele" className={navLinkClass}>
+            Lista celów
+          </NavLink>
           <NavLink to="/historia" className={navLinkClass}>
             Historia
           </NavLink>

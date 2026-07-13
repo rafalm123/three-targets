@@ -29,6 +29,7 @@ model User {
   sessions      Session[]
   accounts      Account[]
   days          Day[]
+  challenges    Challenge[]
 
   @@unique([email])
   @@map("user")
@@ -134,4 +135,38 @@ model Goal {
 
   @@unique([dayId, kind, position])
   @@map("goal")
+}
+
+// --- Faza 2: „Lista celów" = 30-dniowe wyzwanie punktowe ---
+
+/// 30-dniowe wyzwanie punktowe użytkownika (BE-P1). Punkty liczone DERYWACYJNIE z `days`/`goals`
+/// (jak streak — on-the-fly, bez ledgera; tabela `point_events` wraca dopiero w Fazie 3).
+/// `startDate`/`endDate` to LOKALNE daty użytkownika — TEN SAM wzorzec co `Day.date`
+/// (`@db.Date`, północ UTC) → porównania okna leksykograficzne = kalendarzowe.
+model Challenge {
+  id          String       @id @default(cuid())
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String?
+  startDate   DateTime     @db.Date
+  endDate     DateTime     @db.Date
+  createdAt   DateTime     @default(now())
+  rewardTiers RewardTier[]
+
+  @@index([userId])
+  @@map("challenge")
+}
+
+/// Próg nagrody w wyzwaniu: przy osiągnięciu `threshold` punktów odblokowuje się `reward`.
+/// Progi = wielokrotność 10 w zakresie 10..60 (walidacja w kontrakcie zod); unikat per wyzwanie.
+model RewardTier {
+  id          String    @id @default(cuid())
+  challengeId String
+  challenge   Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  threshold   Int
+  reward      String
+
+  @@unique([challengeId, threshold])
+  @@index([challengeId])
+  @@map("reward_tier")
 }

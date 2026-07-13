@@ -6,6 +6,7 @@
 //
 // Kolejne kontrakty (auth, dzień, cele) dochodzą przy swoich taskach (BE-4, BE-9/10…).
 export * from './auth';
+export * from './challenge';
 export * from './day';
 export * from './error';
 export * from './health';
