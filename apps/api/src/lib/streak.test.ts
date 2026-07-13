@@ -89,8 +89,8 @@ describe('computeStreak', () => {
     expect(r.current).toBe(3);
   });
 
-  // BE-20 — reset ustawia floor = JUTRO (> today). Nawet z dowiezionym dziś głównym current=0
-  // (kursor startuje na dziś, ale dziś < floor → pętla nic nie liczy). Pinuje poprawność warunku pętli.
+  // Reset ustawia floor = DZIŚ (patrz stats-service), ale funkcja przyjmuje dowolny floor. Ten przypadek
+  // (floor > today, np. po zmianie strefy na zachód) pinuje warunek pętli: dziś < floor → current 0.
   it('floorDate > today (jutro) → current 0 nawet gdy dziś w zbiorze; longest/totalDays z pełnego zbioru', () => {
     const r = computeStreak(['2026-07-06', '2026-07-07', '2026-07-08'], TODAY, '2026-07-09');
     expect(r.current).toBe(0);

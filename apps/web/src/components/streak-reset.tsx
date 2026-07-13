@@ -85,8 +85,8 @@ export function StreakReset(): ReactNode {
         <div className="dialog-body">
           <h2 id="streak-reset-title">Zresetować serię?</h2>
           <p>
-            Wyzerujesz bieżącą serię (spadnie do 0). Rekord i łączna liczba dni zostają. Ta akcja
-            jest nieodwracalna.
+            Odetniesz przeszłą serię — licznik rusza od dziś. Dzisiejszy dzień nadal się liczy (jeśli
+            dowieziesz główny cel). Rekord i łączna liczba dni zostają. Ta akcja jest nieodwracalna.
           </p>
 
           {error ? (

@@ -149,10 +149,10 @@ export async function getStreak(): Promise<Streak> {
 }
 
 /**
- * POST /api/stats/streak/reset — zeruje BIEŻĄCĄ serię (`current` → 0); `longest`/`totalDays`
- * zostają nietknięte. Zwraca ten sam kształt co `getStreak` (`streakSchema`). Akcja destrukcyjna
- * i nieodwracalna — UI woła ją WYŁĄCZNIE po potwierdzeniu w dialogu (filozofia właściciela:
- * „apka dla samokontroli, nie apka mnie kontroluje" — reset ma być łatwy, ale świadomy).
+ * POST /api/stats/streak/reset — odcina PRZESZŁĄ serię (floor = dziś); `current` spada do 0, chyba że
+ * dziś już dowieziono główny (wtedy zostaje 1). `longest`/`totalDays` nietknięte. Zwraca ten sam kształt
+ * co `getStreak` (`streakSchema`). Akcja destrukcyjna i nieodwracalna — UI woła ją WYŁĄCZNIE po
+ * potwierdzeniu w dialogu (filozofia właściciela: „apka dla samokontroli, nie apka mnie kontroluje").
  */
 export async function resetStreak(): Promise<Streak> {
   const response = await fetch('/api/stats/streak/reset', {

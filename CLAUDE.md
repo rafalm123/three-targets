@@ -112,9 +112,10 @@ z `users.timezone`). Cele poboczne bez znaczenia. Dzień `closed` bez dowiezione
 naturalnie zrywa serię (luka w zbiorze dat). Reguła obejmuje wszystkie trzy metryki (`current/longest/totalDays`)
 i jest globalna (bez grandfatheringu — przeszłe dni mogą się przeliczyć). Dzień w toku (dziś jeszcze bez dowiezionego
 głównego) nie zrywa `current` (grace tylko dla „dziś"). Mierzy *dowieziony główny*, nie sam rytuał.
-**Reset (BE-20):** ręczny `POST /api/stats/streak/reset` zeruje `current` NATYCHMIAST (decyzja właściciela) —
-ustawia `user.streakResetDate = JUTRO` (floor dla `current`), więc dziś liczy się 0 nawet z dowiezionym głównym,
-a seria startuje od nowa dopiero od następnego dnia. Zeruje TYLKO `current`; `longest`/`totalDays` nietknięte.
+**Reset (BE-20):** ręczny `POST /api/stats/streak/reset` ustawia `user.streakResetDate = DZIŚ` (floor dla
+`current`) — odcina PRZESZŁOŚĆ, ale bieżący dzień nadal się liczy (decyzja właściciela): jeśli dziś dowieziony
+główny, `current=1`; jeśli dziś jeszcze bez głównego, `current=0` i podbije się do 1 po zamknięciu dnia
+z dowiezionym głównym. Zeruje TYLKO `current`; `longest`/`totalDays` nietknięte.
 `GET /api/stats/streak` → `current / longest / totalDays / asOfDate`.
 
 ---

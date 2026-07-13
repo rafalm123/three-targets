@@ -1,5 +1,5 @@
 import type { Streak } from '@trzy-cele/shared';
-import { addDaysIso, localDateInTimeZone } from './day-boundary';
+import { localDateInTimeZone } from './day-boundary';
 import { prisma } from './prisma';
 import { computeStreak } from './streak';
 
@@ -41,13 +41,14 @@ export async function readStreak(userId: string, timeZone: string): Promise<Stre
 }
 
 /**
- * BE-20 — ręczny reset serii: ustawia `streakResetDate = JUTRO` (floor dla `current`), po czym
- * zwraca świeży `Streak`. Skutek (decyzja właściciela): `current=0` NATYCHMIAST — nawet gdy dziś
- * dowieziony główny (floor=jutro, pętla `cursor < floor` odcina dziś) — a seria startuje od nowa
- * dopiero od następnego dnia. Zeruje TYLKO `current`; `longest`/`totalDays` nietknięte (pełny zbiór).
+ * BE-20 — ręczny reset serii: ustawia `streakResetDate = DZIŚ` (floor dla `current`), po czym
+ * zwraca świeży `Streak`. Skutek (decyzja właściciela): reset zeruje przeszłą serię, ale DZIŚ nadal
+ * się liczy — jeśli dziś dowieziony główny, `current=1` (floor=dziś, pętla `cursor >= floor`
+ * przepuszcza dziś); jeśli dziś jeszcze bez głównego, `current=0` i podbije się do 1 po zamknięciu
+ * dnia z dowiezionym głównym. Zeruje TYLKO `current`; `longest`/`totalDays` nietknięte (pełny zbiór).
  */
 export async function resetStreak(userId: string, timeZone: string): Promise<Streak> {
-  const tomorrow = addDaysIso(localDateInTimeZone(new Date(), timeZone), 1);
-  await prisma.user.update({ where: { id: userId }, data: { streakResetDate: tomorrow } });
+  const today = localDateInTimeZone(new Date(), timeZone);
+  await prisma.user.update({ where: { id: userId }, data: { streakResetDate: today } });
   return readStreak(userId, timeZone);
 }

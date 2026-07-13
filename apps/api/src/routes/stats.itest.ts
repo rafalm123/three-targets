@@ -225,7 +225,7 @@ describe('POST /api/stats/streak/reset (BE-20 — ręczny reset serii)', () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it('reset zeruje current NATYCHMIAST (floor=jutro); longest i totalDays nietknięte', async () => {
+  it('reset zeruje PRZESZŁOŚĆ; dziś (dowieziony) nadal liczy → current=1; longest/totalDays nietknięte', async () => {
     const { cookie, userId } = await signUpWithId();
     const today = localDateInTimeZone(new Date(), TZ);
     await seedClosed(userId, today);
@@ -238,26 +238,26 @@ describe('POST /api/stats/streak/reset (BE-20 — ręczny reset serii)', () => {
     const reset = await resetStreakReq(cookie);
     expect(reset.statusCode).toBe(200);
     const after = reset.json();
-    // floor = JUTRO → current=0 od razu, nawet z dowiezionym dziś głównym (seria startuje od nowa jutro).
-    expect(after.current).toBe(0);
+    // floor = DZIŚ → przeszłość (wczoraj, przedwczoraj) odcięta, ale dziś dowieziony nadal się liczy.
+    expect(after.current).toBe(1);
     expect(after.longest).toBe(3); // nietknięty
     expect(after.totalDays).toBe(3); // nietknięty
     expect(after.asOfDate).toBe(today);
   });
 
-  it('reset po DOWIEZIONYM dziś głównym też daje current 0 (floor=jutro odcina dziś)', async () => {
+  it('reset po DOWIEZIONYM dziś głównym utrzymuje current 1 (floor=dziś przepuszcza dziś)', async () => {
     const { cookie, userId } = await signUpWithId();
     const today = localDateInTimeZone(new Date(), TZ);
     await seedClosed(userId, today, { mainCompleted: true });
     expect((await getStreak(cookie)).json().current).toBe(1); // przed resetem dziś się liczy
 
     const after = (await resetStreakReq(cookie)).json();
-    expect(after.current).toBe(0);
+    expect(after.current).toBe(1); // dziś dowieziony → seria trzyma 1 po resecie
     expect(after.longest).toBe(1); // nietknięty
     expect(after.totalDays).toBe(1); // nietknięty
   });
 
-  it('reset gdy dziś bez dowiezionego głównego → current 0', async () => {
+  it('reset gdy dziś bez dowiezionego głównego → current 0, potem zamknięcie dziś z głównym → 1', async () => {
     const { cookie, userId } = await signUpWithId();
     const today = localDateInTimeZone(new Date(), TZ);
     // wczoraj + przedwczoraj liczą się, dziś brak wpisu (grace) → przed resetem current 2
@@ -266,19 +266,24 @@ describe('POST /api/stats/streak/reset (BE-20 — ręczny reset serii)', () => {
     expect((await getStreak(cookie)).json().current).toBe(2);
 
     const after = (await resetStreakReq(cookie)).json();
-    expect(after.current).toBe(0); // floor = jutro, a liczone dni są < jutro
+    expect(after.current).toBe(0); // floor = dziś: przeszłość odcięta, dziś jeszcze bez głównego
     expect(after.longest).toBe(2);
     expect(after.totalDays).toBe(2);
+
+    // Scenariusz właściciela: po resecie uzupełniam dziś i zamykam z dowiezionym głównym → seria +1.
+    const day = await createMorning(cookie);
+    await submitEvening(cookie, day.goals, true);
+    expect((await getStreak(cookie)).json().current).toBe(1);
   });
 
-  it('reset jest trwały: kolejny GET nadal widzi wyzerowany current', async () => {
+  it('reset jest trwały: kolejny GET widzi tylko dziś (current 1), bez przeszłości', async () => {
     const { cookie, userId } = await signUpWithId();
     const today = localDateInTimeZone(new Date(), TZ);
     await seedClosed(userId, today);
     await seedClosed(userId, addDaysIso(today, -1));
     await resetStreakReq(cookie);
     const later = (await getStreak(cookie)).json();
-    expect(later.current).toBe(0); // floor (jutro) utrwalony w streakResetDate
+    expect(later.current).toBe(1); // floor (dziś) utrwalony: przeszłość odcięta, dziś liczy
     expect(later.longest).toBe(2);
   });
 });
