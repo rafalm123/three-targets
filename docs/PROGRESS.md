@@ -1,17 +1,21 @@
 # Progress & Handoff — Trzy Cele
 
-> Stan na **2026-07-09** (FE Fazy 1 domknięty). Dokument żywy — źródło prawdy „gdzie jesteśmy / co zostało / jak kontynuować".
-> Dla nowego agenta: **przeczytaj to najpierw**, potem `CLAUDE.md`.
+> Stan na **2026-07-13** (Faza 2 „Lista celów" + ulepszenia streaka wdrożone). Dokument żywy — źródło prawdy
+> „gdzie jesteśmy / co zostało / jak kontynuować". Dla nowego agenta: **przeczytaj to najpierw**, potem `CLAUDE.md`.
 
 ## TL;DR
 
 - **Faza 1 (MVP) — DOMKNIĘTA I WDROŻONA NA PRODUKCJI** → **https://trzy-cele.onrender.com**
-  (Render free, jeden kontener API+SPA, Neon PG18). Smoke test E2E na prodzie przeszedł komplet
-  (rejestracja → poranek → wieczór → historia → streak) = kryterium zamknięcia wg @sa.
-- Backend (BE-3…17) + Frontend (FE-1…13), testy: shared 15 + api 35 (integracja na Postgresie) + web 77 = **127**.
-- **Pełny rejestr tego, co zbudowaliśmy:** `docs/PHASE1_SUMMARY.md`. Wdrożenie/backup: `docs/DEPLOY.md`.
-- **Zostaje (nieblokujące):** testowy restore backupu (FND-7 „done"), rotacja hasła Neona, sprzątnięcie konta
-  `smoke-*@test.local`, dług techniczny (`docs/backlog_mvp.md`).
+  (Render free, jeden kontener API+SPA, Neon PG18). Smoke test E2E na prodzie przeszedł komplet = kryterium @sa.
+- **Sesja 2026-07-11…13 — WDROŻONA NA PRODUKCJI** (3 commity; pełny rejestr: `docs/PHASE2_SUMMARY.md`):
+  - **Streak z dowiezionego głównego** (BE-18) — mierzy cel główny, nie sam rytuał; poboczne bez znaczenia.
+  - **Edycja dnia „dziś" po zamknięciu** (BE-19) — niemutowalność po dacie, przeszłość zamrożona strukturalnie.
+  - **Ręczny reset serii** (BE-20) — `POST /api/stats/streak/reset`, `floor=dziś` (odcina przeszłość, dziś liczy).
+  - **Faza 2 „Lista celów"** — 30-dniowe wyzwanie punktowe; punkty za poboczne (+1, główny 0, **bez kar**),
+    liczone derywacyjnie z `days`/`goals` (bez ledgera); progi nagród co 10; jedna aktywna + historia.
+- Testy (zielone): shared 34 + api 59 unit + 66 integracja + web 125. Review @cr (Fable 5) BE+FE. Smoke E2E 15/15.
+- **Zostaje (nieblokujące):** UI edycji aktywnej listy (PATCH + klient gotowe, brak ekranu; `docs/backlog_mvp.md`);
+  z Fazy 1: testowy restore backupu (FND-7 „done"), rotacja hasła Neona, dług techniczny.
 
 ## Co jest ZROBIONE (na `main`, zweryfikowane)
 
@@ -24,11 +28,18 @@
 | `PATCH /days/today` | edycja poranna (**pełne zastąpienie**) | `morningEntrySchema` | 200 `daySchema` · 404 `NO_DAY_TODAY` · 409 `DAY_ALREADY_CLOSED` · 401 |
 | `POST /days/today/evening` | wieczorne odznaczenie → dzień `closed` | `eveningEntrySchema` | 200 `daySchema` · 404 `NO_DAY_TODAY` · 409 `DAY_ALREADY_CLOSED` · 400 `GOAL_MISMATCH` · 401 |
 | `GET /days/history` | historia (podsumowania, bez notatek) | query `?before=YYYY-MM-DD&limit=` (≤100, dom.30) | 200 `dayHistorySchema` (`{items, nextCursor}`) · 401 |
-| `GET /stats/streak` | licznik/seria | — | 200 `streakSchema` (`{current,longest,totalDays,asOfDate}`) · 401 |
+| `GET /stats/streak` | licznik/seria (dowieziony główny; BE-18) | — | 200 `streakSchema` (`{current,longest,totalDays,asOfDate}`) · 401 |
+| `POST /stats/streak/reset` | ręczny reset serii (BE-20, `floor=dziś`) | — | 200 `streakSchema` · 401 |
+| `POST /challenges` | utwórz 30-dniowe wyzwanie (Faza 2) | `challengeCreateSchema` | 201 `challengeWithPointsSchema` · 409 `ACTIVE_CHALLENGE_EXISTS` · 400 · 401 |
+| `GET /challenges/active` | aktywne wyzwanie z punktami/progami | — | 200 `{challenge: ChallengeWithPoints\|null}` · 401 |
+| `GET /challenges` | historia zakończonych wyzwań | — | 200 `challengeListSchema` (`{items}`) · 401 |
+| `GET /challenges/:id` | szczegóły własnego wyzwania | param `id` | 200 `{challenge: …\|null}` · 401 |
+| `PATCH /challenges/:id` | edycja tytułu/nagród aktywnego | `challengeUpdateSchema` | 200 `challengeWithPointsSchema` · 404 `CHALLENGE_NOT_EDITABLE` · 401 |
 | `/auth/*` | Better Auth (login/register/session/logout) | — | obsługiwane przez `authClient` na FE |
 
-Kod: `apps/api/src/routes/{days,stats,auth,me,health}.ts`. Reguły dnia: `apps/api/src/lib/day-service.ts`
-(guard mutacji) + `day-boundary.ts` (granica doby, streak w `streak.ts`).
+Kod: `apps/api/src/routes/{days,stats,challenges,auth,me,health}.ts`. Reguły dnia: `apps/api/src/lib/day-service.ts`
+(guard mutacji po dacie — BE-19) + `day-boundary.ts` (granica doby). Streak: `streak.ts`/`stats-service.ts`.
+Wyzwania: `points-service.ts` (czysta logika punktów) + `challenge-service.ts`.
 
 ### Infrastruktura
 - **FND-6 deploy:** `render.yaml` (Blueprint, jeden kontener API+SPA), `apps/api/Dockerfile`,
