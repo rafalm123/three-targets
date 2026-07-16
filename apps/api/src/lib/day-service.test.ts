@@ -92,4 +92,13 @@ describe('resolveEditableDate (okno łaski: dziś + wczoraj-jeśli-pending)', ()
       resolveEditableDate({ date: dayBefore, today, day: { status: 'evening_pending' } }),
     ).toMatchObject({ ok: false, status: 403, code: 'DAY_FROZEN' });
   });
+
+  it('data z przyszłości → 400 FUTURE_DATE (spójnie z GET /days/:date)', () => {
+    const tomorrow = '2026-07-17';
+    expect(resolveEditableDate({ date: tomorrow, today, day: null })).toMatchObject({
+      ok: false,
+      status: 400,
+      code: 'FUTURE_DATE',
+    });
+  });
 });

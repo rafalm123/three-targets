@@ -31,8 +31,11 @@ const dateParam = z
     return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
   }, 'Niepoprawna data kalendarzowa');
 
-/** Sygnał wewnętrzny: dzień zamknięto równolegle (wyścig) → rollback transakcji, mapowany na 409. */
+/** Sygnał wewnętrzny: dzień „dziś" zamknięto równolegle (wyścig) → rollback transakcji, mapowany na 409. */
 class DayAlreadyClosedError extends Error {}
+
+/** Sygnał wewnętrzny: dzień „wczoraj" zamrożono między checkiem a zapisem → rollback, mapowany na 403. */
+class DayFrozenError extends Error {}
 
 function toDayResponse(day: DayWithGoals): Day {
   return {
@@ -181,15 +184,7 @@ export const dayRoutes: FastifyPluginAsyncZod = async (app) => {
     {
       preHandler: requireAuth,
       schema: {
-        params: z.object({
-          date: z
-            .string()
-            .regex(/^\d{4}-\d{2}-\d{2}$/)
-            .refine((s) => {
-              const d = dateOnlyUtc(s);
-              return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
-            }, 'Niepoprawna data kalendarzowa'),
-        }),
+        params: z.object({ date: dateParam }),
         response: { 200: dayResponseSchema, 400: apiErrorSchema },
       },
     },
@@ -252,10 +247,23 @@ export const dayRoutes: FastifyPluginAsyncZod = async (app) => {
         return reply.status(400).send(err);
       }
 
-      await prisma.goal.update({
-        where: { id: goalId },
+      const gate = await prisma.goal.updateMany({
+        where: {
+          id: goalId,
+          day: {
+            userId: user.id,
+            date: dateOnlyUtc(date),
+            ...(date === today ? {} : { status: 'evening_pending' }),
+          },
+        },
         data: { completed: body.completed, completedNote: body.completedNote ?? null },
       });
+      if (gate.count === 0) {
+        const frozen: ApiError = {
+          error: { message: 'Ten dzień zamknięto w międzyczasie', code: 'DAY_FROZEN' },
+        };
+        return reply.status(403).send(frozen);
+      }
       const full = await prisma.day.findUnique({
         where: { userId_date: { userId: user.id, date: dateOnlyUtc(date) } },
         include: { goals: { orderBy: { position: 'asc' } } },
@@ -292,13 +300,18 @@ export const dayRoutes: FastifyPluginAsyncZod = async (app) => {
       return reply.status(guard.status).send(err);
     }
 
+    const isToday = date === today;
     try {
       const updated = await prisma.$transaction(async (tx) => {
         const gate = await tx.day.updateMany({
-          where: { userId: user.id, date: dateUtc },
+          where: {
+            userId: user.id,
+            date: dateUtc,
+            ...(isToday ? {} : { status: 'evening_pending' }),
+          },
           data: { eveningNote: body.eveningNote ?? null, status: 'closed' },
         });
-        if (gate.count === 0) throw new DayAlreadyClosedError();
+        if (gate.count === 0) throw isToday ? new DayAlreadyClosedError() : new DayFrozenError();
         for (const mark of body.goals) {
           await tx.goal.update({
             where: { id: mark.id },
@@ -314,6 +327,12 @@ export const dayRoutes: FastifyPluginAsyncZod = async (app) => {
       });
       return await reply.status(200).send(toDayResponse(updated));
     } catch (err) {
+      if (err instanceof DayFrozenError) {
+        const frozen: ApiError = {
+          error: { message: 'Ten dzień zamknięto w międzyczasie', code: 'DAY_FROZEN' },
+        };
+        return await reply.status(403).send(frozen);
+      }
       if (err instanceof DayAlreadyClosedError) {
         const conflict: ApiError = {
           error: { message: 'Dzień jest już zamknięty', code: 'DAY_ALREADY_CLOSED' },
@@ -371,13 +390,18 @@ export const dayRoutes: FastifyPluginAsyncZod = async (app) => {
       throw new Error('Niespójny stan celów dnia'); // inwariant wpisu porannego (1 główny + 2 poboczne)
     }
 
+    const isToday = date === today;
     try {
       const updated = await prisma.$transaction(async (tx) => {
         const gate = await tx.day.updateMany({
-          where: { userId: user.id, date: dateUtc },
+          where: {
+            userId: user.id,
+            date: dateUtc,
+            ...(isToday ? {} : { status: 'evening_pending' }),
+          },
           data: { morningNote: body.morningNote ?? null },
         });
-        if (gate.count === 0) throw new DayAlreadyClosedError();
+        if (gate.count === 0) throw isToday ? new DayAlreadyClosedError() : new DayFrozenError();
 
         await tx.goal.update({
           where: { id: mainGoal.id },
@@ -402,6 +426,12 @@ export const dayRoutes: FastifyPluginAsyncZod = async (app) => {
       });
       return await reply.status(200).send(toDayResponse(updated));
     } catch (err) {
+      if (err instanceof DayFrozenError) {
+        const frozen: ApiError = {
+          error: { message: 'Ten dzień zamknięto w międzyczasie', code: 'DAY_FROZEN' },
+        };
+        return await reply.status(403).send(frozen);
+      }
       if (err instanceof DayAlreadyClosedError) {
         const conflict: ApiError = {
           error: { message: 'Dzień jest już zamknięty', code: 'DAY_ALREADY_CLOSED' },
@@ -414,7 +444,7 @@ export const dayRoutes: FastifyPluginAsyncZod = async (app) => {
 
   const morningEditSchema = {
     body: morningEntrySchema,
-    response: { 200: daySchema, 403: apiErrorSchema, 404: apiErrorSchema, 409: apiErrorSchema },
+    response: { 200: daySchema, 400: apiErrorSchema, 403: apiErrorSchema, 404: apiErrorSchema, 409: apiErrorSchema },
   };
 
   app.patch(

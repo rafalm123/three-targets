@@ -75,4 +75,19 @@ describe('GoalMarkRow (oznaczanie per-cel)', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
     expect(screen.getByText('Nie udało się zapisać. Spróbuj ponownie.')).toBeTruthy();
   });
+
+  it('błąd zapisu → rollback optymistycznego wyboru do poprzedniej wartości', async () => {
+    const onMark = vi.fn().mockRejectedValue(new Error('boom'));
+    const user = userEvent.setup();
+    render(<GoalMarkRow goal={mainGoal({ completed: true })} index={0} onMark={onMark} />);
+
+    const dowiezione = screen.getByRole('radio', { name: 'Dowiezione' }) as HTMLInputElement;
+    const niedowiezione = screen.getByRole('radio', { name: 'Niedowiezione' }) as HTMLInputElement;
+    expect(dowiezione.checked).toBe(true);
+
+    await user.click(niedowiezione);
+    await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
+    await waitFor(() => expect(dowiezione.checked).toBe(true));
+    expect(niedowiezione.checked).toBe(false);
+  });
 });

@@ -25,7 +25,12 @@ export type CloseGuardResult =
 
 export type EditableGuardResult =
   | { ok: true }
-  | { ok: false; status: 403 | 404; code: 'DAY_FROZEN' | 'NO_DAY_TODAY'; message: string };
+  | {
+      ok: false;
+      status: 403 | 404 | 400;
+      code: 'DAY_FROZEN' | 'NO_DAY_TODAY' | 'FUTURE_DATE';
+      message: string;
+    };
 
 /**
  * Czy dzień wolno mutować z uwagi na samo istnienie rekordu?
@@ -51,6 +56,9 @@ export function resolveEditableDate(params: {
 }): EditableGuardResult {
   const { date, today, day } = params;
   if (date === today) return { ok: true };
+  if (date > today) {
+    return { ok: false, status: 400, code: 'FUTURE_DATE', message: 'Nie można edytować dnia z przyszłości' };
+  }
   if (date === addDaysIso(today, -1) && day?.status === 'evening_pending') return { ok: true };
   return { ok: false, status: 403, code: 'DAY_FROZEN', message: 'Ten dzień jest zamknięty do edycji' };
 }

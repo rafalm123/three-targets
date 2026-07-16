@@ -42,21 +42,23 @@ export function GoalMarkRow({
     setSaving(true);
     try {
       await onMark(goal.id, patch);
-    } catch {
+    } catch (err) {
       setError('Nie udało się zapisać. Spróbuj ponownie.');
+      throw err;
     } finally {
       setSaving(false);
     }
   };
 
   const choose = (next: boolean): void => {
+    const previous = completed;
     setCompleted(next);
-    void save(buildPatch(next));
+    void save(buildPatch(next)).catch(() => setCompleted(previous));
   };
 
   const saveNote = (): void => {
     if (completed === null) return;
-    void save(buildPatch(completed));
+    void save(buildPatch(completed)).catch(() => undefined);
   };
 
   return (
