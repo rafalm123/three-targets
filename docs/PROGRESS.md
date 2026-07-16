@@ -1,6 +1,6 @@
 # Progress & Handoff — Trzy Cele
 
-> Stan na **2026-07-13** (Faza 2 „Lista celów" + ulepszenia streaka wdrożone). Dokument żywy — źródło prawdy
+> Stan na **2026-07-16** (BE-21: oznaczanie per-cel + okno łaski „wczoraj" wdrożone). Dokument żywy — źródło prawdy
 > „gdzie jesteśmy / co zostało / jak kontynuować". Dla nowego agenta: **przeczytaj to najpierw**, potem `CLAUDE.md`.
 
 ## TL;DR
@@ -13,12 +13,12 @@
   - **Ręczny reset serii** (BE-20) — `POST /api/stats/streak/reset`, `floor=dziś` (odcina przeszłość, dziś liczy).
   - **Faza 2 „Lista celów"** — 30-dniowe wyzwanie punktowe; punkty za poboczne (+1, główny 0, **bez kar**),
     liczone derywacyjnie z `days`/`goals` (bez ledgera); progi nagród co 10; jedna aktywna + historia.
-- **Sesja 2026-07-16 — BE-21 (gałąź `feat/per-goal-marking-yesterday-grace`, NIEzmergowana):**
+- **Sesja 2026-07-16 — BE-21 — WDROŻONA NA PRODUKCJI** (PR #29 squash-merged; smoke 14/14 zielone):
   - **Oznaczanie celów per-cel** (`PATCH /days/:date/goals/:goalId`) — natychmiastowy zapis `completed`, odpięty od zamknięcia dnia; „Zamknij dzień" = opcjonalne domknięcie (koniec all-or-nothing).
   - **Seria z `main.completed` niezależnie od `closed`** — kliknięcie głównego od razu wchodzi do serii.
   - **Okno łaski „wczoraj-jeśli-`evening_pending`"** — można domknąć/oznaczyć zapomniany wczorajszy dzień; wpp. `403 DAY_FROZEN`. FE: baner „Dokończ wczorajszy dzień".
   - `GOAL_MISMATCH` → `GOAL_NOT_IN_DAY`. Punkty i seria derywacyjne → backfill przelicza się sam (bez migracji).
-- Testy (zielone): shared 41 + api 65 unit + 83 integracja + web 137. **Zostaje: @cr (Fable 5) + PR → main.**
+- Testy (zielone): shared 41 + api 66 unit + 86 integracja + web 138. Review @cr (Fable 5): **APPROVE** (NIT-y TOCTOU/IDOR-test/FUTURE_DATE domknięte). Smoke prod 14/14 (seria z głównego bez zamknięcia, `GOAL_NOT_IN_DAY`/`FUTURE_DATE`/`DAY_FROZEN`, opcjonalne domknięcie, regresja BE-19).
 - Testy poprzedniej sesji: shared 34 + api 59 unit + 66 integracja + web 125. Review @cr (Fable 5) BE+FE. Smoke E2E 15/15.
 - **Zostaje (nieblokujące):** UI edycji aktywnej listy (PATCH + klient gotowe, brak ekranu; `docs/backlog_mvp.md`);
   z Fazy 1: testowy restore backupu (FND-7 „done"), rotacja hasła Neona, dług techniczny.
