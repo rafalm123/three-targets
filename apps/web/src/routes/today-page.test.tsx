@@ -8,72 +8,72 @@ import { TodayPage } from './today-page';
 // Mockujemy klienta API dnia i sesję — testujemy routing pod-stanów HUB, nie sieć/auth.
 const getToday = vi.fn();
 const updateMorning = vi.fn();
-// getStreak używa StreakBadge w AppShell (globalny chrome) — pending promise: badge zostaje w
-// „miękkiej degradacji" (null), a wywołania są policzalne (do testu odświeżenia po zamknięciu dnia).
-const getStreak = vi.fn(() => new Promise(() => {}));
+const markGoal = vi.fn();
+const getDayByDate = vi.fn();
+// getStreak używa StreakBadge (chrome) i kotwica wczoraj (gdy brak dzisiejszego dnia). Domyślnie
+// zwraca poprawny Streak (asOfDate = kotwica); wywołania są policzalne (test odświeżenia serii).
+const getStreak = vi.fn(() =>
+  Promise.resolve({ current: 0, longest: 0, totalDays: 0, asOfDate: '2026-07-16' }),
+);
 vi.mock('../lib/api', () => ({
   getToday: (...a: unknown[]) => getToday(...a) as unknown,
   updateMorning: (...a: unknown[]) => updateMorning(...a) as unknown,
+  markGoal: (...a: unknown[]) => markGoal(...a) as unknown,
+  getDayByDate: (...a: unknown[]) => getDayByDate(...a) as unknown,
   getStreak: () => getStreak() as unknown,
 }));
 vi.mock('../lib/auth-client', () => ({
   authClient: { signOut: vi.fn() },
   useSession: () => ({ data: { user: { name: 'Jan', email: 'jan@example.com' } } }),
 }));
-// StreakReset renderuje się w AppShell (globalny chrome) i woła własne API — ma swój test.
-// Podmieniamy na marker, żeby nie wciągać `resetStreak`/`ApiRequestError` do mocka `../lib/api` tutaj.
 vi.mock('../components/streak-reset', () => ({ StreakReset: () => <span>STREAK_RESET</span> }));
 
-// MorningForm ma własny test — sonda: marker + przycisk wywołujący `onSuccess` utworzonym dniem.
+// DayMarking ma własne testy (jednostki GoalMarkRow/EveningForm) — sonda: marker + przyciski
+// wywołujące callbacki (podmiana dnia, konflikt, oznaczenie głównego = bump serii).
+const CLOSED_FROM_MARKING: Day = {
+  id: 'd-closed',
+  date: '2026-07-09',
+  status: 'closed',
+  morningNote: null,
+  eveningNote: 'wieczorna',
+  goals: [],
+};
+vi.mock('./day-marking', () => ({
+  DayMarking: ({
+    day,
+    onDayChange,
+    onConflict,
+    onMainMarked,
+  }: {
+    day: Day;
+    onDayChange: (d: Day) => void;
+    onConflict: (c: string) => void;
+    onMainMarked: () => void;
+  }) => (
+    <div>
+      DAY_MARKING:{day.date}
+      <button type="button" onClick={onMainMarked}>
+        SIMULATE_MAIN_MARK
+      </button>
+      <button type="button" onClick={() => onDayChange({ ...CLOSED_FROM_MARKING, date: day.date })}>
+        SIMULATE_CLOSE
+      </button>
+      <button type="button" onClick={() => onConflict('DAY_FROZEN')}>
+        SIMULATE_CONFLICT
+      </button>
+    </div>
+  ),
+}));
+
 const CREATED_DAY: Day = {
   id: 'd-created',
   date: '2026-07-09',
   status: 'evening_pending',
   morningNote: null,
   eveningNote: null,
-  goals: [
-    {
-      id: 'gc',
-      kind: 'main',
-      position: 0,
-      title: 'Cel z formularza',
-      note: null,
-      completed: null,
-      completedNote: null,
-    },
-    {
-      id: 'gc1',
-      kind: 'secondary',
-      position: 1,
-      title: 'P1',
-      note: null,
-      completed: null,
-      completedNote: null,
-    },
-    {
-      id: 'gc2',
-      kind: 'secondary',
-      position: 2,
-      title: 'P2',
-      note: null,
-      completed: null,
-      completedNote: null,
-    },
-  ],
+  goals: [],
 };
-// Dzień zamknięty po edycji poranka (PATCH nie zmienia statusu — zostaje `closed`), z nowym tytułem
-// głównego. Sonda dla testu „closed → edycja poranka wraca do PODSUMOWANIA closed z nowym tytułem".
-const EDITED_CLOSED_DAY: Day = {
-  ...CREATED_DAY,
-  id: 'd-edited',
-  status: 'closed',
-  eveningNote: 'wieczorna notatka',
-  goals: CREATED_DAY.goals.map((g, i) => ({
-    ...g,
-    title: g.kind === 'main' ? 'Poprawiony główny' : g.title,
-    completed: i === 0,
-  })),
-};
+const EDITED_CLOSED_DAY: Day = { ...CREATED_DAY, id: 'd-edited', status: 'closed' };
 vi.mock('./morning-form', () => ({
   MorningForm: ({
     heading = 'MORNING_FORM',
@@ -99,64 +99,25 @@ vi.mock('./morning-form', () => ({
   ),
 }));
 
-// EveningForm ma własny test — sonda: marker + przycisk wywołujący `onClosed` zamkniętym dniem.
-vi.mock('./evening-form', () => ({
-  EveningForm: ({ onClosed }: { onClosed: (day: Day) => void }) => (
-    <div>
-      EVENING_FORM
-      <button type="button" onClick={() => onClosed({ ...CREATED_DAY, status: 'closed' })}>
-        SIMULATE_CLOSE
-      </button>
-    </div>
-  ),
-}));
-
-function pendingDay(): Day {
+function pendingDay(date = '2026-07-09'): Day {
   return {
     id: 'd1',
-    date: '2026-07-09',
+    date,
     status: 'evening_pending',
     morningNote: 'poranna notatka',
     eveningNote: null,
     goals: [
-      {
-        id: 'g0',
-        kind: 'main',
-        position: 0,
-        title: 'Główny cel',
-        note: 'opis',
-        completed: null,
-        completedNote: null,
-      },
-      {
-        id: 'g1',
-        kind: 'secondary',
-        position: 1,
-        title: 'Poboczny A',
-        note: null,
-        completed: null,
-        completedNote: null,
-      },
-      {
-        id: 'g2',
-        kind: 'secondary',
-        position: 2,
-        title: 'Poboczny B',
-        note: null,
-        completed: null,
-        completedNote: null,
-      },
+      { id: 'g0', kind: 'main', position: 0, title: 'Główny cel', note: 'opis', completed: null, completedNote: null },
     ],
   };
 }
 
 function closedDay(): Day {
-  const d = pendingDay();
   return {
-    ...d,
+    ...pendingDay(),
     status: 'closed',
     eveningNote: 'wieczorna notatka',
-    goals: d.goals.map((g, i) => ({ ...g, completed: i === 0, completedNote: null })),
+    goals: [{ ...pendingDay().goals[0]!, completed: true }],
   };
 }
 
@@ -175,170 +136,128 @@ afterEach(() => {
 describe('TodayPage (HUB)', () => {
   it('day === null → pokazuje formularz „Rano"', async () => {
     getToday.mockResolvedValue({ day: null });
+    getDayByDate.mockResolvedValue({ day: null });
     renderPage();
     await waitFor(() => expect(screen.getByText('MORNING_FORM')).toBeTruthy());
   });
 
-  it('evening_pending → cele + aktywne akcje „Oznacz wieczór" i „Edytuj poranek"', async () => {
+  it('evening_pending → oznaczanie per-cel (DayMarking) + „Edytuj poranek"', async () => {
     getToday.mockResolvedValue({ day: pendingDay() });
+    getDayByDate.mockResolvedValue({ day: null });
     renderPage();
-    await waitFor(() => expect(screen.getByText('Główny cel')).toBeTruthy());
-    expect(screen.getByText('Poboczny A')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Oznacz wieczór' })).toHaveProperty(
-      'disabled',
-      false,
-    );
-    expect(screen.getByRole('button', { name: 'Edytuj poranek' })).toHaveProperty(
-      'disabled',
-      false,
-    );
+    await waitFor(() => expect(screen.getByText('DAY_MARKING:2026-07-09')).toBeTruthy());
+    expect(screen.getByRole('button', { name: 'Edytuj poranek' })).toHaveProperty('disabled', false);
     expect(screen.queryByText('MORNING_FORM')).toBeNull();
   });
 
-  it('closed → podsumowanie + akcja „Edytuj dziś" (dziś edytowalny mimo zamknięcia)', async () => {
+  it('oznaczenie głównego (DayMarking) bumpuje serię', async () => {
+    getToday.mockResolvedValue({ day: pendingDay() });
+    getDayByDate.mockResolvedValue({ day: null });
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => expect(screen.getByText('DAY_MARKING:2026-07-09')).toBeTruthy());
+    expect(getStreak).toHaveBeenCalledTimes(1); // mount StreakBadge
+
+    await user.click(screen.getByRole('button', { name: 'SIMULATE_MAIN_MARK' }));
+    await waitFor(() => expect(getStreak).toHaveBeenCalledTimes(2));
+  });
+
+  it('domknięcie w DayMarking → podsumowanie closed (bez drugiego GET)', async () => {
+    getToday.mockResolvedValue({ day: pendingDay() });
+    getDayByDate.mockResolvedValue({ day: null });
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => expect(screen.getByText('DAY_MARKING:2026-07-09')).toBeTruthy());
+
+    await user.click(screen.getByRole('button', { name: 'SIMULATE_CLOSE' }));
+    await waitFor(() =>
+      expect(
+        screen.getByText('Ten dzień jest podsumowany — ale dopóki trwa, możesz go jeszcze poprawić.'),
+      ).toBeTruthy(),
+    );
+    expect(getToday).toHaveBeenCalledTimes(1);
+  });
+
+  it('closed → „Edytuj dziś" odsłania oznaczanie per-cel i edycję poranka', async () => {
     getToday.mockResolvedValue({ day: closedDay() });
+    getDayByDate.mockResolvedValue({ day: null });
+    const user = userEvent.setup();
     renderPage();
     await waitFor(() => expect(screen.getByText('Dowiezione')).toBeTruthy());
-    expect(screen.getByText('wieczorna notatka')).toBeTruthy();
-    // Dzisiejszy dzień po zamknięciu jest wciąż edytowalny → akcja „Edytuj dziś".
     expect(screen.getByRole('button', { name: 'Edytuj dziś' })).toHaveProperty('disabled', false);
-  });
-
-  it('closed → „Edytuj dziś" odsłania akcje: poprawa poranka (PATCH) i ponowny wieczór', async () => {
-    getToday.mockResolvedValue({ day: closedDay() });
-    const user = userEvent.setup();
-    renderPage();
-    await waitFor(() => expect(screen.getByText('Dowiezione')).toBeTruthy());
 
     await user.click(screen.getByRole('button', { name: 'Edytuj dziś' }));
+    expect(screen.getByText('DAY_MARKING:2026-07-09')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Edytuj poranek' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Oznacz wieczór ponownie' })).toBeTruthy();
   });
 
-  it('closed → edycja poranka (PATCH) wraca do PODSUMOWANIA closed z nowym tytułem (status bez zmian)', async () => {
-    getToday.mockResolvedValue({ day: closedDay() });
-    const user = userEvent.setup();
-    renderPage();
-    await waitFor(() => expect(screen.getByText('Dowiezione')).toBeTruthy());
-
-    await user.click(screen.getByRole('button', { name: 'Edytuj dziś' }));
-    await user.click(screen.getByRole('button', { name: 'Edytuj poranek' }));
-    expect(screen.getByText('Edytuj poranek')).toBeTruthy();
-
-    // PATCH nie zmienia statusu: onSuccess(EDITED_CLOSED_DAY) → wciąż `closed`, nowy tytuł głównego.
-    await user.click(screen.getByRole('button', { name: 'SIMULATE_SUBMIT_CLOSED' }));
-    await waitFor(() => expect(screen.getByText('Poprawiony główny')).toBeTruthy());
-    // Nadal podsumowanie closed (nie PendingDay): komunikat „Edytuj dziś" obecny.
-    expect(screen.getByRole('button', { name: 'Edytuj dziś' })).toBeTruthy();
-    expect(getToday).toHaveBeenCalledTimes(1);
-  });
-
-  it('closed → ponowny wieczór (re-submit) zamyka dzień i bumpuje streak', async () => {
-    getToday.mockResolvedValue({ day: closedDay() });
-    const user = userEvent.setup();
-    renderPage();
-    await waitFor(() => expect(screen.getByText('Dowiezione')).toBeTruthy());
-    expect(getStreak).toHaveBeenCalledTimes(1);
-
-    await user.click(screen.getByRole('button', { name: 'Edytuj dziś' }));
-    await user.click(screen.getByRole('button', { name: 'Oznacz wieczór ponownie' }));
-    expect(screen.getByText('EVENING_FORM')).toBeTruthy();
-
-    await user.click(screen.getByRole('button', { name: 'SIMULATE_CLOSE' }));
-    await waitFor(() =>
-      expect(
-        screen.getByText(
-          'Ten dzień jest podsumowany — ale dopóki trwa, możesz go jeszcze poprawić.',
-        ),
-      ).toBeTruthy(),
-    );
-    // Re-submit mógł zmienić dowiezienie głównego celu → seria mogła się zmienić: bump.
-    await waitFor(() => expect(getStreak).toHaveBeenCalledTimes(2));
-  });
-
-  it('„Oznacz wieczór" → EveningForm; zamknięcie → podsumowanie closed', async () => {
+  it('„Edytuj poranek" → MorningForm; zapis wraca do widoku bez drugiego GET', async () => {
     getToday.mockResolvedValue({ day: pendingDay() });
+    getDayByDate.mockResolvedValue({ day: null });
     const user = userEvent.setup();
     renderPage();
-    await waitFor(() => expect(screen.getByText('Główny cel')).toBeTruthy());
-
-    await user.click(screen.getByRole('button', { name: 'Oznacz wieczór' }));
-    expect(screen.getByText('EVENING_FORM')).toBeTruthy();
-
-    // getStreak wołany na mount (StreakBadge). Po zamknięciu dnia ma być refetchowany (CR NIT-1).
-    expect(getStreak).toHaveBeenCalledTimes(1);
-
-    // onClosed podmienia dzień na closed bez ponownego GET → podsumowanie read-only.
-    await user.click(screen.getByRole('button', { name: 'SIMULATE_CLOSE' }));
-    await waitFor(() =>
-      expect(
-        screen.getByText(
-          'Ten dzień jest podsumowany — ale dopóki trwa, możesz go jeszcze poprawić.',
-        ),
-      ).toBeTruthy(),
-    );
-    expect(getToday).toHaveBeenCalledTimes(1);
-    // Zamknięcie dnia bumpuje refreshKey → StreakBadge fetchuje serię ponownie (nagroda widoczna od razu).
-    await waitFor(() => expect(getStreak).toHaveBeenCalledTimes(2));
-  });
-
-  it('„Edytuj poranek" → MorningForm w trybie edycji (heading „Edytuj poranek")', async () => {
-    getToday.mockResolvedValue({ day: pendingDay() });
-    const user = userEvent.setup();
-    renderPage();
-    await waitFor(() => expect(screen.getByText('Główny cel')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('DAY_MARKING:2026-07-09')).toBeTruthy());
 
     await user.click(screen.getByRole('button', { name: 'Edytuj poranek' }));
     expect(screen.getByText('Edytuj poranek')).toBeTruthy();
 
-    // Zapis (onSuccess) wraca do widoku dnia z podmienionym dniem, bez ponownego GET.
     await user.click(screen.getByRole('button', { name: 'SIMULATE_SUBMIT' }));
-    await waitFor(() => expect(screen.getByText('Cel z formularza')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('DAY_MARKING:2026-07-09')).toBeTruthy());
     expect(getToday).toHaveBeenCalledTimes(1);
   });
 
-  it('onSuccess po formularzu tworzenia → pokazuje cele dnia BEZ drugiego fetcha', async () => {
-    getToday.mockResolvedValue({ day: null });
-    const user = userEvent.setup();
-    renderPage();
-    await waitFor(() => expect(screen.getByText('MORNING_FORM')).toBeTruthy());
-    expect(getToday).toHaveBeenCalledTimes(1);
-
-    await user.click(screen.getByRole('button', { name: 'SIMULATE_SUBMIT' }));
-
-    await waitFor(() => expect(screen.getByText('Cel z formularza')).toBeTruthy());
-    expect(screen.queryByText('MORNING_FORM')).toBeNull();
-    expect(getToday).toHaveBeenCalledTimes(1);
-  });
-
-  it('konflikt mutacji (409) → notice + refetch getToday (ścieżka obronna handleConflict)', async () => {
-    // 1. mount: evening_pending; 2. refetch po konflikcie: świeży pending.
+  it('konflikt (DAY_FROZEN z DayMarking) → notice + refetch getToday', async () => {
     getToday.mockResolvedValue({ day: pendingDay() });
+    getDayByDate.mockResolvedValue({ day: null });
     const user = userEvent.setup();
     renderPage();
-    await waitFor(() => expect(screen.getByText('Główny cel')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('DAY_MARKING:2026-07-09')).toBeTruthy());
     expect(getToday).toHaveBeenCalledTimes(1);
 
-    await user.click(screen.getByRole('button', { name: 'Edytuj poranek' }));
     await user.click(screen.getByRole('button', { name: 'SIMULATE_CONFLICT' }));
-
-    // handleConflict: pokazuje neutralne notice (rola alert) i przeładowuje dzień.
     await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
-    expect(screen.getByText(/Stan dnia zmienił się w międzyczasie/)).toBeTruthy();
+    expect(screen.getByText(/zamknięty do edycji/)).toBeTruthy();
     await waitFor(() => expect(getToday).toHaveBeenCalledTimes(2));
   });
 
-  it('błąd pobrania → ErrorState; retry faktycznie refetchuje', async () => {
+  it('baner „Dokończ wczoraj" pojawia się TYLKO dla wczoraj-evening_pending', async () => {
+    getToday.mockResolvedValue({ day: pendingDay('2026-07-16') });
+    getDayByDate.mockResolvedValue({ day: pendingDay('2026-07-15') });
+    renderPage();
+    await waitFor(() => expect(screen.getByLabelText('Dokończ wczorajszy dzień')).toBeTruthy());
+    // Kotwica = dzisiejszy day.date (2026-07-16) → wczoraj = 2026-07-15.
+    expect(getDayByDate).toHaveBeenCalledWith('2026-07-15');
+    // Baner operuje na dacie wczorajszej.
+    expect(screen.getByText('DAY_MARKING:2026-07-15')).toBeTruthy();
+  });
+
+  it('baner NIE pojawia się gdy wczoraj closed', async () => {
+    getToday.mockResolvedValue({ day: pendingDay('2026-07-16') });
+    getDayByDate.mockResolvedValue({ day: { ...pendingDay('2026-07-15'), status: 'closed' as const } });
+    renderPage();
+    await waitFor(() => expect(screen.getByText('DAY_MARKING:2026-07-16')).toBeTruthy());
+    expect(screen.queryByLabelText('Dokończ wczorajszy dzień')).toBeNull();
+  });
+
+  it('kotwica wczoraj z asOfDate gdy dziś brak wpisu', async () => {
+    getToday.mockResolvedValue({ day: null });
+    getDayByDate.mockResolvedValue({ day: pendingDay('2026-07-15') });
+    renderPage();
+    // Dziś brak wpisu → MorningForm; kotwica z asOfDate (2026-07-16) → wczoraj = 2026-07-15.
+    await waitFor(() => expect(screen.getByLabelText('Dokończ wczorajszy dzień')).toBeTruthy());
+    expect(getDayByDate).toHaveBeenCalledWith('2026-07-15');
+  });
+
+  it('błąd pobrania → ErrorState; retry refetchuje', async () => {
     getToday.mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce({ day: pendingDay() });
+    getDayByDate.mockResolvedValue({ day: null });
     const user = userEvent.setup();
     renderPage();
     await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
-    const retry = screen.getByRole('button', { name: 'Spróbuj ponownie' });
     expect(getToday).toHaveBeenCalledTimes(1);
 
-    await user.click(retry);
-
-    await waitFor(() => expect(screen.getByText('Główny cel')).toBeTruthy());
+    await user.click(screen.getByRole('button', { name: 'Spróbuj ponownie' }));
+    await waitFor(() => expect(screen.getByText('DAY_MARKING:2026-07-09')).toBeTruthy());
     expect(getToday).toHaveBeenCalledTimes(2);
   });
 });

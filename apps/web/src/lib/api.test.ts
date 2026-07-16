@@ -10,12 +10,18 @@ import {
   getStreak,
   getToday,
   listChallenges,
+  markGoal,
   resetStreak,
   submitEvening,
   updateChallenge,
   updateMorning,
 } from './api';
-import type { ChallengeCreate, EveningEntry, MorningEntry } from '@trzy-cele/shared';
+import type {
+  ChallengeCreate,
+  EveningEntry,
+  GoalMarkPatch,
+  MorningEntry,
+} from '@trzy-cele/shared';
 
 // Mockujemy globalny fetch — testujemy warstwę klienta (koperty, walidacja, mapowanie błędów),
 // nie realną sieć.
@@ -116,40 +122,87 @@ describe('createDay', () => {
   });
 });
 
-describe('updateMorning', () => {
-  it('happy path: PATCH /api/days/today z ciałem, zwraca goły Day', async () => {
+const GOAL_PATCH: GoalMarkPatch = { completed: true, completedNote: 'poszło' };
+
+describe('markGoal', () => {
+  it('happy path: PATCH /api/days/:date/goals/:goalId z ciałem, zwraca pełny Day', async () => {
     fetchMock.mockResolvedValue(jsonResponse(VALID_DAY));
-    const day = await updateMorning(MORNING_ENTRY);
+    const day = await markGoal('2026-07-09', 'g0', GOAL_PATCH);
     expect(day.id).toBe('day-1');
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('/api/days/today');
+    expect(url).toBe('/api/days/2026-07-09/goals/g0');
+    expect(init.method).toBe('PATCH');
+    expect(JSON.parse(init.body as string)).toEqual(GOAL_PATCH);
+  });
+
+  it('403 DAY_FROZEN → ApiRequestError z tym code', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(
+        { error: { message: 'Zamrożony', code: 'DAY_FROZEN' } },
+        { ok: false, status: 403 },
+      ),
+    );
+    await expect(markGoal('2026-07-01', 'g0', GOAL_PATCH)).rejects.toMatchObject({
+      code: 'DAY_FROZEN',
+      status: 403,
+    });
+  });
+
+  it('400 GOAL_NOT_IN_DAY → ApiRequestError z tym code', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(
+        { error: { message: 'Cel spoza dnia', code: 'GOAL_NOT_IN_DAY' } },
+        { ok: false, status: 400 },
+      ),
+    );
+    await expect(markGoal('2026-07-09', 'nope', GOAL_PATCH)).rejects.toMatchObject({
+      code: 'GOAL_NOT_IN_DAY',
+      status: 400,
+    });
+  });
+});
+
+describe('updateMorning', () => {
+  it('happy path: PATCH /api/days/:date z ciałem, zwraca goły Day', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(VALID_DAY));
+    const day = await updateMorning('2026-07-09', MORNING_ENTRY);
+    expect(day.id).toBe('day-1');
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/days/2026-07-09');
     expect(init.method).toBe('PATCH');
     expect(JSON.parse(init.body as string)).toEqual(MORNING_ENTRY);
   });
 
-  it('409 DAY_ALREADY_CLOSED → ApiRequestError z tym code', async () => {
+  it('403 DAY_FROZEN → ApiRequestError z tym code', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse(
-        { error: { message: 'Dzień zamknięty', code: 'DAY_ALREADY_CLOSED' } },
-        { ok: false, status: 409 },
+        { error: { message: 'Zamrożony', code: 'DAY_FROZEN' } },
+        { ok: false, status: 403 },
       ),
     );
-    await expect(updateMorning(MORNING_ENTRY)).rejects.toMatchObject({
-      code: 'DAY_ALREADY_CLOSED',
-      status: 409,
+    await expect(updateMorning('2026-07-01', MORNING_ENTRY)).rejects.toMatchObject({
+      code: 'DAY_FROZEN',
+      status: 403,
     });
   });
 });
 
 describe('submitEvening', () => {
-  it('happy path: POST /api/days/today/evening, zwraca goły Day (closed)', async () => {
+  it('happy path: POST /api/days/:date/evening, zwraca goły Day (closed)', async () => {
     fetchMock.mockResolvedValue(jsonResponse(CLOSED_DAY));
-    const day = await submitEvening(EVENING_ENTRY);
+    const day = await submitEvening('2026-07-09', EVENING_ENTRY);
     expect(day.status).toBe('closed');
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('/api/days/today/evening');
+    expect(url).toBe('/api/days/2026-07-09/evening');
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body as string)).toEqual(EVENING_ENTRY);
+  });
+
+  it('podzbiór (0 celów) też przechodzi — Zamknij dzień bez oznaczeń', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(CLOSED_DAY));
+    await submitEvening('2026-07-09', { goals: [] });
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({ goals: [] });
   });
 
   it('409 DAY_ALREADY_CLOSED → ApiRequestError z tym code', async () => {
@@ -159,21 +212,21 @@ describe('submitEvening', () => {
         { ok: false, status: 409 },
       ),
     );
-    await expect(submitEvening(EVENING_ENTRY)).rejects.toMatchObject({
+    await expect(submitEvening('2026-07-09', EVENING_ENTRY)).rejects.toMatchObject({
       code: 'DAY_ALREADY_CLOSED',
       status: 409,
     });
   });
 
-  it('400 GOAL_MISMATCH → ApiRequestError z tym code', async () => {
+  it('400 GOAL_NOT_IN_DAY → ApiRequestError z tym code', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse(
-        { error: { message: 'Niezgodne cele', code: 'GOAL_MISMATCH' } },
+        { error: { message: 'Cel spoza dnia', code: 'GOAL_NOT_IN_DAY' } },
         { ok: false, status: 400 },
       ),
     );
-    await expect(submitEvening(EVENING_ENTRY)).rejects.toMatchObject({
-      code: 'GOAL_MISMATCH',
+    await expect(submitEvening('2026-07-09', EVENING_ENTRY)).rejects.toMatchObject({
+      code: 'GOAL_NOT_IN_DAY',
       status: 400,
     });
   });

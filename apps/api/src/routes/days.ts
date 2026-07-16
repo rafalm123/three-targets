@@ -9,16 +9,27 @@ import {
   daySchema,
   type DaySummary,
   eveningEntrySchema,
+  goalMarkPatchSchema,
   morningEntrySchema,
 } from '@trzy-cele/shared';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { dateOnlyUtc, localDateInTimeZone, userToday } from '../lib/day-boundary';
-import { checkCanCloseDay, checkDayMutable } from '../lib/day-service';
+import { checkCanCloseDay, resolveEditableDate } from '../lib/day-service';
 import { prisma } from '../lib/prisma';
 import { getAuthSession, requireAuth } from '../lib/require-auth';
 
 type DayWithGoals = Prisma.DayGetPayload<{ include: { goals: true } }>;
+
+/** Walidacja param `:date` — `YYYY-MM-DD` + poprawność kalendarzowa (spójna z GET /days/:date). */
+const dateParam = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine((s) => {
+    const d = dateOnlyUtc(s);
+    return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+  }, 'Niepoprawna data kalendarzowa');
 
 /** Sygnał wewnętrzny: dzień zamknięto równolegle (wyścig) → rollback transakcji, mapowany na 409. */
 class DayAlreadyClosedError extends Error {}
@@ -201,154 +212,221 @@ export const dayRoutes: FastifyPluginAsyncZod = async (app) => {
     },
   );
 
-  // BE-12/BE-19 — wieczorne odznaczenie: oznacza każdy z 3 celów (dowieziony/nie + opcjonalna notatka),
-  // zapisuje notatkę wieczorną i ustawia dzień na `closed`. Reguły (istnienie dnia „dziś" / spójność
-  // celów) w checkCanCloseDay. BE-19: dzień „dziś" można re-submitować także po zamknięciu (mutowalność
-  // po dacie, nie po statusie); dni przeszłe nieosiągalne (endpoint ładuje tylko userToday). Zapis atomowy.
-  app.post(
-    '/days/today/evening',
-    {
-      preHandler: requireAuth,
-      schema: {
-        body: eveningEntrySchema,
-        response: {
-          200: daySchema,
-          400: apiErrorSchema,
-          404: apiErrorSchema,
-          409: apiErrorSchema,
-        },
-      },
-    },
-    async (request, reply) => {
-      const { user } = getAuthSession(request);
-      const body = request.body;
-      const date = userToday(user.timezone);
-
-      const day = await prisma.day.findUnique({
-        where: { userId_date: { userId: user.id, date } },
-        include: { goals: true },
-      });
-
-      const guard = checkCanCloseDay(day, body.goals.map((g) => g.id));
-      if (!guard.ok) {
-        const err: ApiError = { error: { message: guard.message, code: guard.code } };
-        return reply.status(guard.status).send(err);
-      }
-
-      // guard.ok: dzień istnieje (dziś), a body.goals to dokładnie cele tego dnia.
-      // BE-19: dzień „dziś" jest mutowalny także gdy `closed` (re-submit wieczoru), więc bramka
-      // gate'uje po `userId, date` (= dziś — endpoint ładuje wyłącznie userToday), NIE po statusie.
-      // Chroni to nadal atomowo przed równoległym double-submit (warunkowy updateMany po kluczu dnia)
-      // oraz — strukturalnie — przed mutacją dni przeszłych (nieosiągalne tą trasą). `count===0` to
-      // teraz przypadek obronny (dzień zniknął) → rollback → 409.
-      try {
-        const updated = await prisma.$transaction(async (tx) => {
-          const gate = await tx.day.updateMany({
-            where: { userId: user.id, date },
-            data: { eveningNote: body.eveningNote ?? null, status: 'closed' },
-          });
-          if (gate.count === 0) throw new DayAlreadyClosedError();
-          for (const mark of body.goals) {
-            await tx.goal.update({
-              where: { id: mark.id },
-              data: { completed: mark.completed, completedNote: mark.completedNote ?? null },
-            });
-          }
-          const full = await tx.day.findUnique({
-            where: { userId_date: { userId: user.id, date } },
-            include: { goals: { orderBy: { position: 'asc' } } },
-          });
-          if (!full) throw new Error('Dzień zniknął w trakcie zamykania'); // nieosiągalne
-          return full;
-        });
-        return await reply.status(200).send(toDayResponse(updated));
-      } catch (err) {
-        if (err instanceof DayAlreadyClosedError) {
-          const conflict: ApiError = {
-            error: { message: 'Dzień jest już zamknięty', code: 'DAY_ALREADY_CLOSED' },
-          };
-          return await reply.status(409).send(conflict);
-        }
-        throw err;
-      }
-    },
-  );
-
-  // BE-11/BE-19 — edycja porannego wpisu. Zastępuje treść poranną (1 główny + 2 poboczne + notatka)
-  // dla dnia „dziś", NIEZALEŻNIE od statusu (BE-19: dziś closed też edytowalny — mutowalność po dacie).
-  // Dni przeszłe zamrożone strukturalnie (endpoint ładuje tylko userToday). Atomowa bramka po kluczu dnia.
+  // Oznaczanie celu per-cel (odpięte od zamykania dnia): natychmiastowy zapis `completed`
+  // + `completedNote` pojedynczego celu. NIE zmienia `status` dnia. Okno łaski (dziś lub
+  // wczoraj-jeśli-`evening_pending`) rozstrzyga `resolveEditableDate`; cel spoza dnia → 400.
   app.patch(
-    '/days/today',
+    '/days/:date/goals/:goalId',
     {
       preHandler: requireAuth,
       schema: {
-        body: morningEntrySchema,
-        response: { 200: daySchema, 404: apiErrorSchema, 409: apiErrorSchema },
+        params: z.object({ date: dateParam, goalId: z.string() }),
+        body: goalMarkPatchSchema,
+        response: { 200: daySchema, 400: apiErrorSchema, 403: apiErrorSchema, 404: apiErrorSchema },
       },
     },
     async (request, reply) => {
       const { user } = getAuthSession(request);
+      const { date, goalId } = request.params;
       const body = request.body;
-      const date = userToday(user.timezone);
+      const today = localDateInTimeZone(new Date(), user.timezone);
 
       const day = await prisma.day.findUnique({
-        where: { userId_date: { userId: user.id, date } },
+        where: { userId_date: { userId: user.id, date: dateOnlyUtc(date) } },
         include: { goals: { orderBy: { position: 'asc' } } },
       });
 
-      const guard = checkDayMutable(day);
-      if (!guard.ok) {
-        const err: ApiError = { error: { message: guard.message, code: guard.code } };
-        return reply.status(guard.status).send(err);
+      const editable = resolveEditableDate({ date, today, day });
+      if (!editable.ok) {
+        const err: ApiError = { error: { message: editable.message, code: editable.code } };
+        return reply.status(editable.status).send(err);
       }
-      if (!day) throw new Error('Dzień zniknął po walidacji'); // nieosiągalne — zawężenie typu
-
-      const mainGoal = day.goals.find((g) => g.kind === 'main');
-      const secGoals = day.goals.filter((g) => g.kind === 'secondary');
-      if (!mainGoal || secGoals.length !== 2) {
-        throw new Error('Niespójny stan celów dnia'); // inwariant wpisu porannego (1 główny + 2 poboczne)
+      if (!day) {
+        const err: ApiError = { error: { message: 'Brak wpisu na ten dzień', code: 'NO_DAY_TODAY' } };
+        return reply.status(404).send(err);
+      }
+      if (!day.goals.some((g) => g.id === goalId)) {
+        const err: ApiError = {
+          error: { message: 'Cel nie należy do tego dnia', code: 'GOAL_NOT_IN_DAY' },
+        };
+        return reply.status(400).send(err);
       }
 
-      try {
-        const updated = await prisma.$transaction(async (tx) => {
-          // BE-19: gate po `userId, date` (= dziś), NIE po statusie — dziś closed też edytowalny.
-          const gate = await tx.day.updateMany({
-            where: { userId: user.id, date },
-            data: { morningNote: body.morningNote ?? null },
-          });
-          if (gate.count === 0) throw new DayAlreadyClosedError();
-
-          await tx.goal.update({
-            where: { id: mainGoal.id },
-            data: { title: body.main.title, note: body.main.note ?? null },
-          });
-          for (let i = 0; i < secGoals.length; i++) {
-            const goal = secGoals[i];
-            const input = body.secondary[i];
-            if (!goal || !input) throw new Error('Niespójny stan celów pobocznych');
-            await tx.goal.update({
-              where: { id: goal.id },
-              data: { title: input.title, note: input.note ?? null },
-            });
-          }
-
-          const full = await tx.day.findUnique({
-            where: { userId_date: { userId: user.id, date } },
-            include: { goals: { orderBy: { position: 'asc' } } },
-          });
-          if (!full) throw new Error('Dzień zniknął w trakcie edycji'); // nieosiągalne
-          return full;
-        });
-        return await reply.status(200).send(toDayResponse(updated));
-      } catch (err) {
-        if (err instanceof DayAlreadyClosedError) {
-          const conflict: ApiError = {
-            error: { message: 'Dzień jest już zamknięty', code: 'DAY_ALREADY_CLOSED' },
-          };
-          return await reply.status(409).send(conflict);
-        }
-        throw err;
-      }
+      await prisma.goal.update({
+        where: { id: goalId },
+        data: { completed: body.completed, completedNote: body.completedNote ?? null },
+      });
+      const full = await prisma.day.findUnique({
+        where: { userId_date: { userId: user.id, date: dateOnlyUtc(date) } },
+        include: { goals: { orderBy: { position: 'asc' } } },
+      });
+      if (!full) throw new Error('Dzień zniknął w trakcie oznaczania'); // nieosiągalne
+      return reply.status(200).send(toDayResponse(full));
     },
+  );
+
+  // Domknięcie wieczoru: zapisuje notatkę wieczorną, ustawia `status='closed'` i stosuje PODZBIÓR
+  // (0..3) przesłanych oznaczeń (te id muszą należeć do dnia). All-or-nothing zniesione — cele
+  // nieoznaczone pozostają jak są. Okno łaski (dziś / wczoraj-pending) przez resolveEditableDate.
+  // Atomowa bramka wyścigu (`updateMany` po kluczu dnia) chroni przed równoległym double-submit.
+  const handleEvening = async (request: FastifyRequest, reply: FastifyReply, date: string) => {
+    const { user } = getAuthSession(request);
+    const body = eveningEntrySchema.parse(request.body);
+    const today = localDateInTimeZone(new Date(), user.timezone);
+    const dateUtc = dateOnlyUtc(date);
+
+    const day = await prisma.day.findUnique({
+      where: { userId_date: { userId: user.id, date: dateUtc } },
+      include: { goals: true },
+    });
+
+    const editable = resolveEditableDate({ date, today, day });
+    if (!editable.ok) {
+      const err: ApiError = { error: { message: editable.message, code: editable.code } };
+      return reply.status(editable.status).send(err);
+    }
+
+    const guard = checkCanCloseDay(day, body.goals.map((g) => g.id));
+    if (!guard.ok) {
+      const err: ApiError = { error: { message: guard.message, code: guard.code } };
+      return reply.status(guard.status).send(err);
+    }
+
+    try {
+      const updated = await prisma.$transaction(async (tx) => {
+        const gate = await tx.day.updateMany({
+          where: { userId: user.id, date: dateUtc },
+          data: { eveningNote: body.eveningNote ?? null, status: 'closed' },
+        });
+        if (gate.count === 0) throw new DayAlreadyClosedError();
+        for (const mark of body.goals) {
+          await tx.goal.update({
+            where: { id: mark.id },
+            data: { completed: mark.completed, completedNote: mark.completedNote ?? null },
+          });
+        }
+        const full = await tx.day.findUnique({
+          where: { userId_date: { userId: user.id, date: dateUtc } },
+          include: { goals: { orderBy: { position: 'asc' } } },
+        });
+        if (!full) throw new Error('Dzień zniknął w trakcie zamykania'); // nieosiągalne
+        return full;
+      });
+      return await reply.status(200).send(toDayResponse(updated));
+    } catch (err) {
+      if (err instanceof DayAlreadyClosedError) {
+        const conflict: ApiError = {
+          error: { message: 'Dzień jest już zamknięty', code: 'DAY_ALREADY_CLOSED' },
+        };
+        return await reply.status(409).send(conflict);
+      }
+      throw err;
+    }
+  };
+
+  const eveningSchema = {
+    body: eveningEntrySchema,
+    response: { 200: daySchema, 400: apiErrorSchema, 403: apiErrorSchema, 404: apiErrorSchema, 409: apiErrorSchema },
+  };
+
+  app.post(
+    '/days/today/evening',
+    { preHandler: requireAuth, schema: eveningSchema },
+    async (request, reply) =>
+      handleEvening(request, reply, localDateInTimeZone(new Date(), getAuthSession(request).user.timezone)),
+  );
+
+  app.post(
+    '/days/:date/evening',
+    { preHandler: requireAuth, schema: { ...eveningSchema, params: z.object({ date: dateParam }) } },
+    async (request, reply) => handleEvening(request, reply, request.params.date),
+  );
+
+  // Edycja porannego wpisu (1 główny + 2 poboczne + notatka) — pełne zastąpienie treści.
+  // NIE zmienia `status`. Okno łaski (dziś / wczoraj-pending) przez resolveEditableDate.
+  const handleMorningEdit = async (request: FastifyRequest, reply: FastifyReply, date: string) => {
+    const { user } = getAuthSession(request);
+    const body = morningEntrySchema.parse(request.body);
+    const today = localDateInTimeZone(new Date(), user.timezone);
+    const dateUtc = dateOnlyUtc(date);
+
+    const day = await prisma.day.findUnique({
+      where: { userId_date: { userId: user.id, date: dateUtc } },
+      include: { goals: { orderBy: { position: 'asc' } } },
+    });
+
+    const editable = resolveEditableDate({ date, today, day });
+    if (!editable.ok) {
+      const err: ApiError = { error: { message: editable.message, code: editable.code } };
+      return reply.status(editable.status).send(err);
+    }
+    if (!day) {
+      const err: ApiError = { error: { message: 'Brak wpisu na ten dzień', code: 'NO_DAY_TODAY' } };
+      return reply.status(404).send(err);
+    }
+
+    const mainGoal = day.goals.find((g) => g.kind === 'main');
+    const secGoals = day.goals.filter((g) => g.kind === 'secondary');
+    if (!mainGoal || secGoals.length !== 2) {
+      throw new Error('Niespójny stan celów dnia'); // inwariant wpisu porannego (1 główny + 2 poboczne)
+    }
+
+    try {
+      const updated = await prisma.$transaction(async (tx) => {
+        const gate = await tx.day.updateMany({
+          where: { userId: user.id, date: dateUtc },
+          data: { morningNote: body.morningNote ?? null },
+        });
+        if (gate.count === 0) throw new DayAlreadyClosedError();
+
+        await tx.goal.update({
+          where: { id: mainGoal.id },
+          data: { title: body.main.title, note: body.main.note ?? null },
+        });
+        for (let i = 0; i < secGoals.length; i++) {
+          const goal = secGoals[i];
+          const input = body.secondary[i];
+          if (!goal || !input) throw new Error('Niespójny stan celów pobocznych');
+          await tx.goal.update({
+            where: { id: goal.id },
+            data: { title: input.title, note: input.note ?? null },
+          });
+        }
+
+        const full = await tx.day.findUnique({
+          where: { userId_date: { userId: user.id, date: dateUtc } },
+          include: { goals: { orderBy: { position: 'asc' } } },
+        });
+        if (!full) throw new Error('Dzień zniknął w trakcie edycji'); // nieosiągalne
+        return full;
+      });
+      return await reply.status(200).send(toDayResponse(updated));
+    } catch (err) {
+      if (err instanceof DayAlreadyClosedError) {
+        const conflict: ApiError = {
+          error: { message: 'Dzień jest już zamknięty', code: 'DAY_ALREADY_CLOSED' },
+        };
+        return await reply.status(409).send(conflict);
+      }
+      throw err;
+    }
+  };
+
+  const morningEditSchema = {
+    body: morningEntrySchema,
+    response: { 200: daySchema, 403: apiErrorSchema, 404: apiErrorSchema, 409: apiErrorSchema },
+  };
+
+  app.patch(
+    '/days/today',
+    { preHandler: requireAuth, schema: morningEditSchema },
+    async (request, reply) =>
+      handleMorningEdit(request, reply, localDateInTimeZone(new Date(), getAuthSession(request).user.timezone)),
+  );
+
+  app.patch(
+    '/days/:date',
+    { preHandler: requireAuth, schema: { ...morningEditSchema, params: z.object({ date: dateParam }) } },
+    async (request, reply) => handleMorningEdit(request, reply, request.params.date),
   );
 };

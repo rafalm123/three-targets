@@ -13,7 +13,13 @@
   - **Ręczny reset serii** (BE-20) — `POST /api/stats/streak/reset`, `floor=dziś` (odcina przeszłość, dziś liczy).
   - **Faza 2 „Lista celów"** — 30-dniowe wyzwanie punktowe; punkty za poboczne (+1, główny 0, **bez kar**),
     liczone derywacyjnie z `days`/`goals` (bez ledgera); progi nagród co 10; jedna aktywna + historia.
-- Testy (zielone): shared 34 + api 59 unit + 66 integracja + web 125. Review @cr (Fable 5) BE+FE. Smoke E2E 15/15.
+- **Sesja 2026-07-16 — BE-21 (gałąź `feat/per-goal-marking-yesterday-grace`, NIEzmergowana):**
+  - **Oznaczanie celów per-cel** (`PATCH /days/:date/goals/:goalId`) — natychmiastowy zapis `completed`, odpięty od zamknięcia dnia; „Zamknij dzień" = opcjonalne domknięcie (koniec all-or-nothing).
+  - **Seria z `main.completed` niezależnie od `closed`** — kliknięcie głównego od razu wchodzi do serii.
+  - **Okno łaski „wczoraj-jeśli-`evening_pending`"** — można domknąć/oznaczyć zapomniany wczorajszy dzień; wpp. `403 DAY_FROZEN`. FE: baner „Dokończ wczorajszy dzień".
+  - `GOAL_MISMATCH` → `GOAL_NOT_IN_DAY`. Punkty i seria derywacyjne → backfill przelicza się sam (bez migracji).
+- Testy (zielone): shared 41 + api 65 unit + 83 integracja + web 137. **Zostaje: @cr (Fable 5) + PR → main.**
+- Testy poprzedniej sesji: shared 34 + api 59 unit + 66 integracja + web 125. Review @cr (Fable 5) BE+FE. Smoke E2E 15/15.
 - **Zostaje (nieblokujące):** UI edycji aktywnej listy (PATCH + klient gotowe, brak ekranu; `docs/backlog_mvp.md`);
   z Fazy 1: testowy restore backupu (FND-7 „done"), rotacja hasła Neona, dług techniczny.
 
@@ -25,8 +31,9 @@
 | `POST /days` | wpis poranny (tworzy dzień „dziś") | `morningEntrySchema` | 201 `daySchema` (goły `Day`) · 409 `DAY_ALREADY_EXISTS` · 400 · 401 |
 | `GET /days/today` | dzień „dzisiaj" | — | 200 `dayResponseSchema` (`{day: Day\|null}`) · 401 |
 | `GET /days/:date` | pełny dzień po dacie (historia szczegół) | param `date` (`YYYY-MM-DD`, ≤ dziś) | 200 `dayResponseSchema` · 400 `FUTURE_DATE`/walidacja · 401 |
-| `PATCH /days/today` | edycja poranna (**pełne zastąpienie**) | `morningEntrySchema` | 200 `daySchema` · 404 `NO_DAY_TODAY` · 409 `DAY_ALREADY_CLOSED` · 401 |
-| `POST /days/today/evening` | wieczorne odznaczenie → dzień `closed` | `eveningEntrySchema` | 200 `daySchema` · 404 `NO_DAY_TODAY` · 409 `DAY_ALREADY_CLOSED` · 400 `GOAL_MISMATCH` · 401 |
+| `PATCH /days/:date` (+ kompat `/days/today`) | edycja poranna (**pełne zastąpienie**) | `morningEntrySchema` | 200 `daySchema` · 404 `NO_DAY_TODAY` · 403 `DAY_FROZEN` · 409 `DAY_ALREADY_CLOSED` · 401 |
+| `PATCH /days/:date/goals/:goalId` **(BE-21)** | oznaczenie **pojedynczego** celu (natychmiast, bez zmiany statusu) | `goalMarkPatchSchema` `{completed, completedNote?}` | 200 `daySchema` · 404 `NO_DAY_TODAY` · 403 `DAY_FROZEN` · 400 `GOAL_NOT_IN_DAY` · 401 |
+| `POST /days/:date/evening` (+ kompat `/days/today/evening`) | **opcjonalne** domknięcie: podzbiór 0..3 oznaczeń + notatka wieczorna → `closed` | `eveningEntrySchema` (`goals` 0..3) | 200 `daySchema` · 404 `NO_DAY_TODAY` · 403 `DAY_FROZEN` · 409 `DAY_ALREADY_CLOSED` · 400 `GOAL_NOT_IN_DAY` · 401 |
 | `GET /days/history` | historia (podsumowania, bez notatek) | query `?before=YYYY-MM-DD&limit=` (≤100, dom.30) | 200 `dayHistorySchema` (`{items, nextCursor}`) · 401 |
 | `GET /stats/streak` | licznik/seria (dowieziony główny; BE-18) | — | 200 `streakSchema` (`{current,longest,totalDays,asOfDate}`) · 401 |
 | `POST /stats/streak/reset` | ręczny reset serii (BE-20, `floor=dziś`) | — | 200 `streakSchema` · 401 |
@@ -96,8 +103,11 @@ Better Auth 1.6.23 crashuje na względnym URL).
   NIE duplikuj kształtów. Walidacja formularzy: użyj tych samych schematów (`safeParse`).
 - **Koperty odpowiedzi niespójne świadomie:** `POST /days` zwraca *goły* `Day` (201); `GET /days/today`
   i `GET /days/:date` zwracają `{ day: Day | null }`. Wieczór/edycja zwracają *goły* `Day` (200).
-- **Stany dnia:** `evening_pending` → `closed`. „Przed wpisem porannym" = **brak dnia** (`day: null`),
-  nie osobny status. `closed` niemutowalny (edycja/wieczór po zamknięciu → 409). Mutacje tylko „dziś".
+- **Stany dnia (BE-21):** `evening_pending` → `closed`. „Przed wpisem porannym" = **brak dnia** (`day: null`),
+  nie osobny status. Oznaczanie celów jest **per-cel i natychmiastowe** (`PATCH /days/:date/goals/:goalId`),
+  odpięte od zamknięcia; `closed` = **opcjonalne** domknięcie (notatka wieczorna). Mutacje dozwolone dla
+  **„dziś" oraz „wczoraj" dopóki `evening_pending`** (okno łaski); wpp. `403 DAY_FROZEN`. Seria liczy się
+  z `main.completed=true` niezależnie od statusu. Stary kod `GOAL_MISMATCH` zastąpiony przez `GOAL_NOT_IN_DAY`.
 - **Strefa czasowa:** „dziś" wyznacza **serwer** z `users.timezone` (ustawiane przy rejestracji). FE nie
   wysyła daty dla „dziś" — po prostu woła `/days/today`. `timezone` jest wymagane w formularzu rejestracji (już jest).
 - **Wieczór (FE-8):** `eveningEntrySchema.goals` to **dokładnie 3** obiekty `{id, completed, completedNote?}`,

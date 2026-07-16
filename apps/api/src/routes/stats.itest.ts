@@ -68,6 +68,24 @@ async function seedClosed(
   });
 }
 
+/** Seeduje dzień NIEZAMKNIĘTY (`evening_pending`) z zadanym stanem celu głównego — dowód odpięcia serii od `closed`. */
+async function seedPending(userId: string, dateStr: string, mainCompleted: boolean): Promise<void> {
+  await prisma.day.create({
+    data: {
+      userId,
+      date: new Date(`${dateStr}T00:00:00.000Z`),
+      status: 'evening_pending',
+      goals: {
+        create: [
+          { kind: 'main', position: 0, title: 'G', completed: mainCompleted },
+          { kind: 'secondary', position: 1, title: 'A', completed: null },
+          { kind: 'secondary', position: 2, title: 'B', completed: null },
+        ],
+      },
+    },
+  });
+}
+
 async function getStreak(cookie: string) {
   const res = await app.inject({ method: 'GET', url: '/api/stats/streak', headers: { cookie } });
   return res;
@@ -151,6 +169,23 @@ describe('GET /api/stats/streak (integracja API ↔ DB)', () => {
     expect(s.longest).toBe(3);
     expect(s.totalDays).toBe(3);
     expect(s.current).toBe(0);
+  });
+
+  // Odpięcie serii od `closed`: dzień NIEZAMKNIĘTY (evening_pending) z dowiezionym głównym liczy się.
+  it('dzień evening_pending z main.completed=true liczy się do serii (bez wymogu closed)', async () => {
+    const { cookie, userId } = await signUpWithId();
+    const today = localDateInTimeZone(new Date(), TZ);
+    await seedPending(userId, today, true);
+    const s = (await getStreak(cookie)).json();
+    expect(s).toMatchObject({ current: 1, longest: 1, totalDays: 1 });
+  });
+
+  it('dzień evening_pending z main.completed=false NIE liczy się (grace „dziś": current 0)', async () => {
+    const { cookie, userId } = await signUpWithId();
+    const today = localDateInTimeZone(new Date(), TZ);
+    await seedPending(userId, today, false);
+    const s = (await getStreak(cookie)).json();
+    expect(s).toMatchObject({ current: 0, longest: 0, totalDays: 0 });
   });
 
   // BE-18 — seria liczona z celu GŁÓWNEGO: dzień liczy się ⇔ main.completed === true.

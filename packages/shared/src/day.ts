@@ -54,9 +54,17 @@ export const goalMarkSchema = z.object({
 });
 export type GoalMark = z.infer<typeof goalMarkSchema>;
 
-/** Wieczorne odznaczenie: dokładnie 3 cele (każdy dowieziony/nie) + opcjonalna notatka wieczorna. */
+/** Oznaczenie pojedynczego celu per-cel (natychmiastowy zapis, odpięte od zamykania dnia). */
+export const goalMarkPatchSchema = z.object({
+  completed: z.boolean(),
+  completedNote: z.string().trim().max(2000).optional(),
+});
+export type GoalMarkPatch = z.infer<typeof goalMarkPatchSchema>;
+
+/** Zamknięcie wieczoru: notatka wieczorna + opcjonalny podzbiór oznaczeń (0..3), których id
+ * muszą należeć do dnia (weryfikowane w backendzie). Cele nieoznaczone pozostają jak są. */
 export const eveningEntrySchema = z.object({
-  goals: z.array(goalMarkSchema).length(3),
+  goals: z.array(goalMarkSchema).max(3),
   eveningNote: z.string().trim().max(2000).optional(),
 });
 export type EveningEntry = z.infer<typeof eveningEntrySchema>;

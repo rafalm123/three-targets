@@ -16,6 +16,7 @@ import {
   type DayHistory,
   type DayResponse,
   type EveningEntry,
+  type GoalMarkPatch,
   type MorningEntry,
   type Streak,
 } from '@trzy-cele/shared';
@@ -66,6 +67,13 @@ export class ApiRequestError extends Error {
 /** Nagłówki JSON dla żądań z ciałem. Ciasteczko sesji leci automatycznie (same-origin). */
 const JSON_HEADERS = { 'Content-Type': 'application/json' } as const;
 
+/**
+ * Ścieżka bazowa operacji na dniu po dacie (`YYYY-MM-DD`). Trasy `:date` są równoważne wariantom
+ * `today` dla daty dzisiejszej — serwer sam rozstrzyga okno łaski (dziś / wczoraj-`evening_pending`)
+ * i zamraża resztę (`DAY_FROZEN`). FE przekazuje faktyczną datę dnia z obiektu `Day.date`.
+ */
+const dayPath = (date: string): string => `/api/days/${date}`;
+
 /** Bezpiecznie wyciąga kopertę błędu z odpowiedzi `!ok`; przy braku/niepoprawnym JSON → fallback. */
 async function readApiError(response: Response): Promise<ApiRequestError> {
   let body: unknown;
@@ -115,14 +123,36 @@ export async function createDay(entry: MorningEntry): Promise<Day> {
 }
 
 /**
- * PATCH /api/days/today — edycja porannego wpisu (**pełne zastąpienie**, nie merge). Wysyłamy
+ * PATCH /api/days/:date/goals/:goalId — oznaczenie POJEDYNCZEGO celu (per-cel, natychmiastowy zapis,
+ * odpięte od zamykania dnia). Body `{ completed, completedNote? }`; NIE zmienia `status` dnia. Zwraca
+ * pełny `Day` (200). Okno łaski (dziś / wczoraj-`evening_pending`) rozstrzyga serwer. 403 `DAY_FROZEN`
+ * = dzień poza oknem edycji; 404 `NO_DAY_TODAY` = brak wpisu; 400 `GOAL_NOT_IN_DAY` = cel spoza dnia →
+ * `ApiRequestError` z `code`.
+ */
+export async function markGoal(
+  date: string,
+  goalId: string,
+  patch: GoalMarkPatch,
+): Promise<Day> {
+  const response = await fetch(`${dayPath(date)}/goals/${goalId}`, {
+    method: 'PATCH',
+    headers: { ...JSON_HEADERS, Accept: 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  if (!response.ok) throw await readApiError(response);
+  return parseOk(daySchema, await response.json(), response.status);
+}
+
+/**
+ * PATCH /api/days/:date — edycja porannego wpisu (**pełne zastąpienie**, nie merge). Wysyłamy
  * komplet 1 główny + 2 poboczne + `morningNote`; pominięte opcjonalne pola serwer ustawi na null.
  * Zwraca *goły* `Day` (200). DZISIEJSZY dzień jest edytowalny również po zamknięciu (FE-B) — status
- * `closed` NIE blokuje edycji „dziś". 409 `DAY_ALREADY_CLOSED` to ścieżka martwa-obronna (wyścig/
- * zniknięcie dnia), 404 `NO_DAY_TODAY` = brak dnia → `ApiRequestError` z `code` (UI przeładuje HUB).
+ * `closed` NIE blokuje edycji „dziś". 403 `DAY_FROZEN` = dzień poza oknem edycji; 409
+ * `DAY_ALREADY_CLOSED` to ścieżka martwa-obronna (wyścig); 404 `NO_DAY_TODAY` = brak dnia →
+ * `ApiRequestError` z `code` (UI przeładuje HUB).
  */
-export async function updateMorning(entry: MorningEntry): Promise<Day> {
-  const response = await fetch('/api/days/today', {
+export async function updateMorning(date: string, entry: MorningEntry): Promise<Day> {
+  const response = await fetch(dayPath(date), {
     method: 'PATCH',
     headers: { ...JSON_HEADERS, Accept: 'application/json' },
     body: JSON.stringify(entry),
@@ -132,15 +162,16 @@ export async function updateMorning(entry: MorningEntry): Promise<Day> {
 }
 
 /**
- * POST /api/days/today/evening — wieczorne odznaczenie (dzień → `closed`). `goals` to DOKŁADNIE
- * 3 obiekty `{id, completed, completedNote?}`, gdzie `id` = id celów z pobranego dnia (nie wymyślać).
- * Zwraca *goły* `Day` (200). Działa też jako RE-SUBMIT dzisiejszego `closed` (FE-B) — status `closed`
- * NIE blokuje ponownego oznaczenia „dziś". 400 `GOAL_MISMATCH` = złe/niepełne id; 409
+ * POST /api/days/:date/evening — domknięcie wieczoru (dzień → `closed`). `goals` to PODZBIÓR (0..3)
+ * obiektów `{id, completed, completedNote?}`, gdzie `id` = id celów z pobranego dnia (nie wymyślać).
+ * All-or-nothing zniesione: cele nieoznaczone pozostają jak są; „Zamknij dzień" finalizuje notatkę +
+ * `status='closed'`. Zwraca *goły* `Day` (200). Działa też jako RE-SUBMIT dzisiejszego `closed` (FE-B).
+ * 403 `DAY_FROZEN` = dzień poza oknem edycji; 400 `GOAL_NOT_IN_DAY` = id spoza dnia; 409
  * `DAY_ALREADY_CLOSED` to ścieżka martwa-obronna (wyścig); 404 `NO_DAY_TODAY` = brak dnia →
  * `ApiRequestError` z `code` (UI reaguje / przeładuje HUB).
  */
-export async function submitEvening(entry: EveningEntry): Promise<Day> {
-  const response = await fetch('/api/days/today/evening', {
+export async function submitEvening(date: string, entry: EveningEntry): Promise<Day> {
+  const response = await fetch(`${dayPath(date)}/evening`, {
     method: 'POST',
     headers: { ...JSON_HEADERS, Accept: 'application/json' },
     body: JSON.stringify(entry),
