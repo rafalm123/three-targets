@@ -97,22 +97,28 @@ PostgreSQL (Neon)
 - **`days`** — `id, userId, date (lokalna data), morningNote, eveningNote, status`. Unikat: `(userId, date)`.
   - **`status` = maszyna stanów:** `evening_pending` → `closed` (decyzja @sa). „Przed wpisem porannym" =
     **brak rekordu dnia** (stan wirtualny) → dzień rodzi się od razu w `evening_pending` (tworzy go wpis poranny).
-    Wieczorne odznaczenie → `closed`. `closed` jest **niemutowalny**; mutacje dnia (edycja/odznaczenie) tylko dla „dziś".
-    Reguły przejść zdefiniowane w jednym serwisie doby.
+    **ZMIANA (BE-21, decyzja właściciela):** `closed` jest teraz **opcjonalnym domknięciem** (notatka wieczorna
+    + finalizacja), **nie** warunkiem oznaczania celów. Oznaczenia `completed` zapisuje się **per-cel, natychmiast**
+    (`PATCH /days/:date/goals/:goalId`), niezależnie od zamknięcia — znika all-or-nothing wieczoru.
+  - **Okno edytowalności (BE-21):** mutacje (oznaczenie/edycja poranna/domknięcie) dozwolone dla **„dziś"**
+    (zawsze) **oraz „wczoraj" dopóki `evening_pending`** (okno łaski „zapomniałem zaakceptować"). Każdy inny
+    przeszły dzień oraz wczoraj już `closed` → **zamrożony** (`403 DAY_FROZEN`). Rozstrzyga to czysty guard
+    `resolveEditableDate` (`day-service.ts`); reguły przejść w jednym serwisie doby.
 - **`goals`** — `id, dayId, kind (main|secondary), position, title, note, completed (bool|null), completedNote`.
 - **`challenge`** *(Faza 2, BE-P1)* — 30-dniowe wyzwanie punktowe („Lista celów"): `id, userId, title (String?), startDate, endDate, createdAt`.
   - `startDate`/`endDate` = LOKALNE daty użytkownika, trzymane **tym samym wzorcem co `Day.date`** (`@db.Date`, północ UTC przez `dateOnlyUtc`; odczyt `.toISOString().slice(0,10)`) → porównania okna leksykograficzne = kalendarzowe. Indeks po `userId`.
   - `startDate = userToday(tz)`, `endDate = start + 29 dni`. **„Aktywne"** = `endDate >= dziś` (max 1/usera — 409 na drugą aktywną); **„historia"** = `endDate < dziś`.
 - **`reward_tier`** *(Faza 2, BE-P1)* — progi nagród wyzwania: `id, challengeId (FK, onDelete Cascade), threshold (Int), reward (String)`. Unikat `(challengeId, threshold)`. Progi = wielokrotność 10 w zakresie 10..60 (walidacja w kontrakcie zod; okno 30 dni × max +2/dzień = teoretyczne max 60 pkt).
-- **PUNKTY WYZWANIA liczone DERYWACYJNIE** (decyzja @sa, jak streak — on-the-fly z `days`/`goals`, **BEZ ledgera**): `totalPoints` = liczba celów `kind='secondary', completed=true` w dniach usera z `date` w oknie `[startDate, min(dziś, endDate)]`. **Model (finalny, BEZ KAR):** poboczny wykonany = **+1** (każdy, max +2/dzień), główny = **0** (bez znaczenia), **ZERO odejmowania/ujemnych** — punkty tylko rosną. Dzień pominięty / niezamknięty / dziś w toku → poboczne nie `completed` → 0 wkładu. Czysta logika w `apps/api/src/lib/points-service.ts` (testowana bez DB, jak `streak.ts`); orkiestracja DB w `challenge-service.ts`.
+- **PUNKTY WYZWANIA liczone DERYWACYJNIE** (decyzja @sa, jak streak — on-the-fly z `days`/`goals`, **BEZ ledgera**): `totalPoints` = liczba celów `kind='secondary', completed=true` w dniach usera z `date` w oknie `[startDate, min(dziś, endDate)]`. **Model (finalny, BEZ KAR):** poboczny wykonany = **+1** (każdy, max +2/dzień), główny = **0** (bez znaczenia), **ZERO odejmowania/ujemnych** — punkty tylko rosną. Liczy się **wyłącznie** `secondary.completed=true` (BE-21: niezależnie od statusu dnia — poboczny oznaczony na dniu `evening_pending` też liczy); poboczny nieoznaczony → 0 wkładu. Czysta logika w `apps/api/src/lib/points-service.ts` (testowana bez DB, jak `streak.ts`); orkiestracja DB w `challenge-service.ts`.
 - **`point_events`** *(świadomie ODŁOŻONE do Fazy 3 — koło ratunkowe/admin/audyt)* — append-only ledger: `id, userId, dayId, delta, reason, createdBy, createdAt`.
   - **Świadome odejście od pierwotnego planu:** Faza 2 pierwotnie zakładała ledger `point_events` już dla punktów. Po pivocie na „Wyzwania punktowe" (model +1 za poboczne, bez kar) punkty są w pełni **derywowalne z `days`/`goals`**, więc ledger byłby zbędnym stanem do zsynchronizowania. Ledger wraca w Fazie 3, gdy pojawi się potrzeba ręcznych korekt/audytu (koło ratunkowe, admin) — wtedy `delta` jako INTEGER (**nigdy float**), saldo/historia z eventów.
 - **`lifeline_usage`** *(Faza 3)* — `id, userId, yearMonth, dayId` — limit 1 koło/miesiąc.
 
 **Streak / licznik dni** liczymy z `days` (nie trzymamy w osobnym polu → brak rozjazdu).
-**Definicja serii (decyzja @sa; zmiana BE-18):** maksymalny ciąg kolejnych dni kalendarzowych z **dowiezionym
-celem głównym** (dzień `closed` z celem `kind='main', completed=true`), licząc wstecz od „dziś" (serwer,
-z `users.timezone`). Cele poboczne bez znaczenia. Dzień `closed` bez dowiezionego głównego **nie liczy się** →
+**Definicja serii (decyzja @sa; zmiana BE-18, uściślenie BE-21):** maksymalny ciąg kolejnych dni kalendarzowych z **dowiezionym
+celem głównym** (dzień z celem `kind='main', completed=true` — **niezależnie od statusu**; BE-21 odpięło serię
+od `closed`, bo oznaczanie jest teraz per-cel), licząc wstecz od „dziś" (serwer,
+z `users.timezone`). Cele poboczne bez znaczenia. Dzień bez dowiezionego głównego **nie liczy się** →
 naturalnie zrywa serię (luka w zbiorze dat). Reguła obejmuje wszystkie trzy metryki (`current/longest/totalDays`)
 i jest globalna (bez grandfatheringu — przeszłe dni mogą się przeliczyć). Dzień w toku (dziś jeszcze bez dowiezionego
 głównego) nie zrywa `current` (grace tylko dla „dziś"). Mierzy *dowieziony główny*, nie sam rytuał.

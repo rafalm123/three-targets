@@ -13,3 +13,18 @@ export const apiErrorSchema = z.object({
 });
 
 export type ApiError = z.infer<typeof apiErrorSchema>;
+
+/**
+ * Znane kody błędów domenowych zwracane przez NASZE trasy (poza formatem Better Auth).
+ * Jedno miejsce referencyjne dla FE; `code` w `apiErrorSchema` pozostaje otwartym stringiem.
+ */
+export const errorCodes = {
+  DAY_ALREADY_EXISTS: 'DAY_ALREADY_EXISTS',
+  DAY_ALREADY_CLOSED: 'DAY_ALREADY_CLOSED',
+  NO_DAY_TODAY: 'NO_DAY_TODAY',
+  GOAL_NOT_IN_DAY: 'GOAL_NOT_IN_DAY',
+  DAY_FROZEN: 'DAY_FROZEN',
+  FUTURE_DATE: 'FUTURE_DATE',
+} as const;
+
+export type ErrorCode = (typeof errorCodes)[keyof typeof errorCodes];

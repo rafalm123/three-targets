@@ -11,10 +11,14 @@ import { computeStreak } from './streak';
  * BE-20: `user.streakResetDate` (lokalna data) działa jak `floorDate` — zeruje TYLKO `current`.
  */
 
-/** Daty (`YYYY-MM-DD`) dni użytkownika liczących się do serii = closed z dowiezionym głównym (BE-18). */
+/**
+ * Daty (`YYYY-MM-DD`) dni użytkownika liczących się do serii = dni z DOWIEZIONYM celem głównym
+ * (`kind='main', completed=true`), NIEZALEŻNIE od `status='closed'`. Odpięcie od zamykania dnia:
+ * kliknięcie „główny dowieziony" natychmiast wchodzi do serii, bez konieczności domykania wieczoru.
+ */
 async function qualifyingDates(userId: string): Promise<string[]> {
   const rows = await prisma.day.findMany({
-    where: { userId, status: 'closed', goals: { some: { kind: 'main', completed: true } } },
+    where: { userId, goals: { some: { kind: 'main', completed: true } } },
     select: { date: true },
   });
   return rows.map((r) => r.date.toISOString().slice(0, 10));

@@ -370,6 +370,35 @@ a {
   gap: var(--space-2);
 }
 
+.day-marking {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.day-banner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  margin-bottom: var(--space-2);
+  background: var(--color-surface);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius);
+}
+
+.day-banner-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+}
+
+.day-banner-head h3 {
+  margin: 0;
+}
+
 .day-view-header {
   display: flex;
   flex-wrap: wrap;
